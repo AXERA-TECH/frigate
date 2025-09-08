@@ -1,0 +1,50 @@
+name: AXERA
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: 3.9
+
+jobs:
+  axera_builds:
+    runs-on: ubuntu-22.04-arm
+    name: Axera Build
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set AX650_TAG
+        run: echo "AX650_TAG=ax650-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+
+      - name: Set Version
+        run: make version
+
+      - name: Build
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          push: false
+          targets: ax650
+          files: docker/axera/ax650.hcl
+          set: |
+            ax650.tags=frigate:${{ env.AX650_TAG }}
+            *.cache-from=type=gha
+
+      - name: Save Docker image as tar file
+        run: |
+          docker save frigate:${{ env.AX650_TAG }} -o frigate-${{ env.AX650_TAG }}.tar
+          ls -lh frigate-${{ env.AX650_TAG }}.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ax650-docker-image
+          path: frigate-${{ env.AX650_TAG }}.tar
+          retention-days: 7

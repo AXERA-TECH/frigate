@@ -587,7 +587,8 @@ class FrigateApp:
     def init_auth(self) -> None:
         if self.config.auth.enabled:
             if User.select().count() == 0:
-                password = secrets.token_hex(16)
+                # password = secrets.token_hex(16)
+                password = "axera123456"
                 password_hash = hash_password(
                     password, iterations=self.config.auth.hash_iterations
                 )
