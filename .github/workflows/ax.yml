@@ -2,6 +2,28 @@ name: AXERA
 
 on:
   workflow_dispatch:
+    inputs:
+      upload_to_hf:
+        description: 'Upload to Hugging Face?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      hf_repo_id:
+        description: 'Hugging Face Repository ID'
+        required: false
+        default: 'AXERA-TECH/frigate-resource'
+      hf_repo_type:
+        description: 'Repository type'
+        required: false
+        default: 'model'
+        type: choice
+        options:
+          - model
+          - dataset
+          - space
 
 concurrency:
   group: ${{ github.ref }}
@@ -48,3 +70,50 @@ jobs:
           name: ax650-docker-image
           path: frigate-${{ env.AX650_TAG }}.tar
           retention-days: 7
+
+      - name: Check if should upload to Hugging Face
+        id: check_upload
+        run: |
+          if [ "${{ github.event.inputs.upload_to_hf }}" = "true" ]; then
+            echo "UPLOAD_TO_HF=true" >> $GITHUB_OUTPUT
+          else
+            echo "UPLOAD_TO_HF=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to Hugging Face Hub
+        if: steps.check_upload.outputs.UPLOAD_TO_HF == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ github.event.inputs.hf_repo_id }}
+          HF_REPO_TYPE: ${{ github.event.inputs.hf_repo_type }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "Error: HF_TOKEN secret is not set"
+            exit 1
+          fi
+
+          if [ -z "$HF_REPO_ID" ] || [ "$HF_REPO_ID" = "your-username/your-repo-name" ]; then
+            echo "Error: Please provide a valid Hugging Face repository ID"
+            exit 1
+          fi
+
+          pip install huggingface_hub
+
+          python -c "
+          from huggingface_hub import HfApi
+          import os
+
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          filename = f'frigate-{os.environ[\"AX650_TAG\"]}.tar'
+          repo_id = os.environ['HF_REPO_ID']
+          repo_type = os.environ['HF_REPO_TYPE']
+
+          print(f'Uploading {filename} to {repo_id} ({repo_type})...')
+          api.upload_file(
+              path_or_fileobj=filename,
+              path_in_repo=filename,
+              repo_id=repo_id,
+              repo_type=repo_type
+          )
+          print('Upload completed!')
+          "
