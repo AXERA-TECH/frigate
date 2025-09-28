@@ -1406,7 +1406,7 @@ def preview_mp4(
         seconds = int(diff % 60)
         config: FrigateConfig = request.app.frigate_config
         ffmpeg_cmd = [
-            config.ffmpeg.ffmpeg_path,
+            "/usr/lib/ffmpeg/axcl/ffmpeg",
             "-init_hw_device",
             "axmm:axmm,alloc_blk=1",
             "-hide_banner",
@@ -1474,7 +1474,7 @@ def preview_mp4(
         config: FrigateConfig = request.app.frigate_config
 
         ffmpeg_cmd = [
-            config.ffmpeg.ffmpeg_path,
+            "/usr/lib/ffmpeg/axcl/ffmpeg",
             "-init_hw_device",
             "axmm:axmm,alloc_blk=1",
             "-hide_banner",
