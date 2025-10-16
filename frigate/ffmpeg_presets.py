@@ -63,6 +63,10 @@ _user_agent_args = [
 ]
 
 PRESETS_HW_ACCEL_DECODE = {
+    "preset-axera-h264": "-resize {1}x{2} -c:v h264_axdec",
+    "preset-axera-h265": "-resize {1}x{2} -c:v hevc_axdec",
+    "preset-axera-h264-compat": "-hwaccel axmm -hwaccel_output_format axmm -c:v h264_axdec",
+    "preset-axera-h265-compat": "-hwaccel axmm -hwaccel_output_format axmm -c:v hevc_axdec",
     "preset-rpi-64-h264": "-c:v:1 h264_v4l2m2m",
     "preset-rpi-64-h265": "-c:v:1 hevc_v4l2m2m",
     FFMPEG_HWACCEL_VAAPI: f"-hwaccel_flags allow_profile_mismatch -hwaccel vaapi -hwaccel_device {_gpu_selector.get_selected_gpu()} -hwaccel_output_format vaapi",
@@ -96,6 +100,10 @@ PRESETS_HW_ACCEL_DECODE["preset-rk-h265"] = PRESETS_HW_ACCEL_DECODE[
 ]
 
 PRESETS_HW_ACCEL_SCALE = {
+    "preset-axera-h264": "-r {0}",
+    "preset-axera-h265": "-r {0}",
+    "preset-axera-h264-compat": "-r {0} -vf ax_scale={1}:{2},hwdownload,format=nv12",
+    "preset-axera-h265-compat": "-r {0} -vf ax_scale={1}:{2},hwdownload,format=nv12",
     "preset-rpi-64-h264": "-r {0} -vf fps={0},scale={1}:{2}",
     "preset-rpi-64-h265": "-r {0} -vf fps={0},scale={1}:{2}",
     FFMPEG_HWACCEL_VAAPI: "-r {0} -vf fps={0},scale_vaapi=w={1}:h={2},hwdownload,format=nv12,eq=gamma=1.4:gamma_weight=0.5",
