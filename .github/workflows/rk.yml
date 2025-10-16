@@ -1,0 +1,120 @@
+name: RK
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_hf:
+        description: 'Upload to Hugging Face?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      hf_repo_id:
+        description: 'Hugging Face Repository ID'
+        required: false
+        default: 'AXERA-TECH/frigate-resource'
+      hf_repo_type:
+        description: 'Repository type'
+        required: false
+        default: 'model'
+        type: choice
+        options:
+          - model
+          - dataset
+          - space
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: 3.9
+
+jobs:
+  rk_builds:
+    runs-on: ubuntu-22.04-arm
+    name: RK Build
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set RK_AXCL_TAG
+        run: echo "RK_AXCL_TAG=rk-axcl-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+
+      - name: Set Version
+        run: make version
+
+      - name: Build
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          push: false
+          targets: rk
+          files: docker/rockchip/rk.hcl
+          set: |
+            rk.tags=frigate:${{ env.RK_AXCL_TAG }}
+            *.cache-from=type=gha
+
+      - name: Save Docker image as tar file
+        run: |
+          docker save frigate:${{ env.RK_AXCL_TAG }} -o frigate-${{ env.RK_AXCL_TAG }}.tar
+          ls -lh frigate-${{ env.RK_AXCL_TAG }}.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rk-axcl-docker-image
+          path: frigate-${{ env.RK_AXCL_TAG }}.tar
+          retention-days: 7
+
+      - name: Check if should upload to Hugging Face
+        id: check_upload
+        run: |
+          if [ "${{ github.event.inputs.upload_to_hf }}" = "true" ]; then
+            echo "UPLOAD_TO_HF=true" >> $GITHUB_OUTPUT
+          else
+            echo "UPLOAD_TO_HF=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to Hugging Face Hub
+        if: steps.check_upload.outputs.UPLOAD_TO_HF == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ github.event.inputs.hf_repo_id }}
+          HF_REPO_TYPE: ${{ github.event.inputs.hf_repo_type }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "Error: HF_TOKEN secret is not set"
+            exit 1
+          fi
+
+          if [ -z "$HF_REPO_ID" ] || [ "$HF_REPO_ID" = "your-username/your-repo-name" ]; then
+            echo "Error: Please provide a valid Hugging Face repository ID"
+            exit 1
+          fi
+
+          pip install huggingface_hub
+
+          python -c "
+          from huggingface_hub import HfApi
+          import os
+
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          filename = f'frigate-{os.environ[\"RK_AXCL_TAG\"]}.tar'
+          repo_id = os.environ['HF_REPO_ID']
+          repo_type = os.environ['HF_REPO_TYPE']
+
+          print(f'Uploading {filename} to {repo_id} ({repo_type}) on branch rk-axcl...')
+          api.upload_file(
+              path_or_fileobj=filename,
+              path_in_repo=filename,
+              repo_id=repo_id,
+              repo_type=repo_type,
+              revision='rk-axcl'  # 指定推送到 rk-axcl 分支
+          )
+          print('Upload completed!')
+          "
