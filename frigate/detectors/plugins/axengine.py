@@ -28,195 +28,19 @@ ANCHORS = [
     [30, 61, 62, 45, 59, 119],
     [116, 90, 156, 198, 373, 326],
 ]
-NUM_OUTPUTS = 85
-
-CLASS_NAMES = [
-    "person",
-    "bicycle",
-    "car",
-    "motorcycle",
-    "airplane",
-    "bus",
-    "train",
-    "truck",
-    "boat",
-    "traffic light",
-    "fire hydrant",
-    "stop sign",
-    "parking meter",
-    "bench",
-    "bird",
-    "cat",
-    "dog",
-    "horse",
-    "sheep",
-    "cow",
-    "elephant",
-    "bear",
-    "zebra",
-    "giraffe",
-    "backpack",
-    "umbrella",
-    "handbag",
-    "tie",
-    "suitcase",
-    "frisbee",
-    "skis",
-    "snowboard",
-    "sports ball",
-    "kite",
-    "baseball bat",
-    "baseball glove",
-    "skateboard",
-    "surfboard",
-    "tennis racket",
-    "bottle",
-    "wine glass",
-    "cup",
-    "fork",
-    "knife",
-    "spoon",
-    "bowl",
-    "banana",
-    "apple",
-    "sandwich",
-    "orange",
-    "broccoli",
-    "carrot",
-    "hot dog",
-    "pizza",
-    "donut",
-    "cake",
-    "chair",
-    "couch",
-    "potted plant",
-    "bed",
-    "dining table",
-    "toilet",
-    "tv",
-    "laptop",
-    "mouse",
-    "remote",
-    "keyboard",
-    "cell phone",
-    "microwave",
-    "oven",
-    "toaster",
-    "sink",
-    "refrigerator",
-    "book",
-    "clock",
-    "vase",
-    "scissors",
-    "teddy bear",
-    "hair drier",
-    "toothbrush",
-]
-
-COCO_CATEGORIES = {
-    "person": 1,
-    "bicycle": 2,
-    "car": 3,
-    "motorcycle": 4,
-    "airplane": 5,
-    "bus": 6,
-    "train": 7,
-    "truck": 8,
-    "boat": 9,
-    "traffic light": 10,
-    "fire hydrant": 11,
-    "stop sign": 13,
-    "parking meter": 14,
-    "bench": 15,
-    "bird": 16,
-    "cat": 17,
-    "dog": 18,
-    "horse": 19,
-    "sheep": 20,
-    "cow": 21,
-    "elephant": 22,
-    "bear": 23,
-    "zebra": 24,
-    "giraffe": 25,
-    "backpack": 27,
-    "umbrella": 28,
-    "handbag": 31,
-    "tie": 32,
-    "suitcase": 33,
-    "frisbee": 34,
-    "skis": 35,
-    "snowboard": 36,
-    "sports ball": 37,
-    "kite": 38,
-    "baseball bat": 39,
-    "baseball glove": 40,
-    "skateboard": 41,
-    "surfboard": 42,
-    "tennis racket": 43,
-    "bottle": 44,
-    "wine glass": 46,
-    "cup": 47,
-    "fork": 48,
-    "knife": 49,
-    "spoon": 50,
-    "bowl": 51,
-    "banana": 52,
-    "apple": 53,
-    "sandwich": 54,
-    "orange": 55,
-    "broccoli": 56,
-    "carrot": 57,
-    "hot dog": 58,
-    "pizza": 59,
-    "donut": 60,
-    "cake": 61,
-    "chair": 62,
-    "couch": 63,
-    "potted plant": 64,
-    "bed": 65,
-    "dining table": 67,
-    "toilet": 70,
-    "tv": 72,
-    "laptop": 73,
-    "mouse": 74,
-    "remote": 75,
-    "keyboard": 76,
-    "cell phone": 77,
-    "microwave": 78,
-    "oven": 79,
-    "toaster": 80,
-    "sink": 81,
-    "refrigerator": 82,
-    "book": 84,
-    "clock": 85,
-    "vase": 86,
-    "scissors": 87,
-    "teddy bear": 88,
-    "hair drier": 89,
-    "toothbrush": 90,
-}
-
 
 class AxenginDetectorConfig(BaseDetectorConfig):
     type: Literal[DETECTOR_KEY]
 
-
 class Axengine(DetectionApi):
     type_key = DETECTOR_KEY
-
     def __init__(self, config: AxenginDetectorConfig):
         logger.info("__init__ axengine")
         super().__init__(config)
         self.height = config.model.height
         self.width = config.model.width
-
         model_path = config.model.path or "yolov5s_320"
-
-        # model_props = self.parse_model_input(model_path, soc)
-
         self.session = axe.InferenceSession(f"/axmodels/{model_path}.axmodel")
-
-        logger.info("after InferenceSession")
 
     def __del__(self):
         pass
@@ -316,9 +140,7 @@ class Axengine(DetectionApi):
         return best_bboxes
 
     def sigmoid(self, x):
-        # return 1.0 / (np.exp(-x) + 1.0)
         return np.clip(0.2 * x + 0.5, 0, 1)
-
 
     def gen_proposals(self, outputs):
         new_pred = []
@@ -345,18 +167,13 @@ class Axengine(DetectionApi):
 
         return np.concatenate(new_pred, axis=0)
 
-    def post_processing(self, outputs, input_shape, classes=None, threshold=0.3):
+    def post_processing(self, outputs, input_shape, threshold=0.3):
         proposals = self.gen_proposals(outputs)
         bboxes = self.nms(proposals, IOU_THRESH, CONF_THRESH, multi_label=True)
 
         """
         bboxes: [x_min, y_min, x_max, y_max, probability, cls_id] format coordinates.
         """
-        if classes == None:
-            classes = {v: k for k, v in COCO_CATEGORIES.items()}
-
-        num_classes = len(classes)
-        hsv_tuples = [(1.0 * x / num_classes, 1.0, 1.0) for x in range(num_classes)]
 
         results = np.zeros((20, 6), np.float32)
 
@@ -368,11 +185,6 @@ class Axengine(DetectionApi):
             if score < threshold:
                 continue
             class_ind = int(bbox[5])
-
-            # logger.info(
-            #     f"  {class_ind:>3}: {CLASS_NAMES[class_ind]:<10}: {coor}, score: {score*100:3.2f}%"
-            # )
-
             results[i] = [
                 class_ind,
                 score,
@@ -384,8 +196,6 @@ class Axengine(DetectionApi):
         return results
 
     def detect_raw(self, tensor_input):
-
         results = None
         results = self.session.run(None, {"images": tensor_input})
-
         return self.post_processing(results, (self.width, self.height))
