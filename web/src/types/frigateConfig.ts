@@ -28,7 +28,7 @@ export interface FaceRecognitionConfig {
   recognition_threshold: number;
 }
 
-export type SearchModel = "jinav1" | "jinav2";
+export type SearchModel = "jinav1" | "jinav2" | "ax_jinav2";
 export type SearchModelSize = "small" | "large";
 
 export interface CameraConfig {
