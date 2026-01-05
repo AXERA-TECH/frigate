@@ -1709,6 +1709,8 @@ def preview_mp4(
         config: FrigateConfig = request.app.frigate_config
         ffmpeg_cmd = [
             config.ffmpeg.ffmpeg_path,
+            "-init_hw_device",
+            "axmm:axmm,alloc_blk=1",
             "-hide_banner",
             "-loglevel",
             "warning",
@@ -1724,7 +1726,7 @@ def preview_mp4(
             "-vf",
             "setpts=0.12*PTS",
             "-c:v",
-            "libx264",
+            "h264_axenc",
             "-movflags",
             "+faststart",
             path,
@@ -1775,6 +1777,8 @@ def preview_mp4(
 
         ffmpeg_cmd = [
             config.ffmpeg.ffmpeg_path,
+            "-init_hw_device",
+            "axmm:axmm,alloc_blk=1",
             "-hide_banner",
             "-loglevel",
             "warning",
@@ -1788,7 +1792,7 @@ def preview_mp4(
             "-i",
             "/dev/stdin",
             "-c:v",
-            "libx264",
+            "h264_axenc",
             "-movflags",
             "+faststart",
             path,
