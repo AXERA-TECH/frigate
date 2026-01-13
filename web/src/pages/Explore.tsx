@@ -292,10 +292,13 @@ export default function Explore() {
 
   const modelVersion = config?.semantic_search.model || "jinav1";
   const modelSize = config?.semantic_search.model_size || "small";
+  const isAxJinaV2 = modelVersion === "ax_jinav2";
 
   // Text model state
   const { payload: textModelState } = useModelState(
-    modelVersion === "jinav1"
+    isAxJinaV2
+      ? "AXERA-TECH/jina-clip-v2-text_encoder.axmodel"
+      : modelVersion === "jinav1"
       ? "jinaai/jina-clip-v1-text_model_fp16.onnx"
       : modelSize === "large"
         ? "jinaai/jina-clip-v2-model_fp16.onnx"
@@ -304,14 +307,18 @@ export default function Explore() {
 
   // Tokenizer state
   const { payload: textTokenizerState } = useModelState(
-    modelVersion === "jinav1"
+    isAxJinaV2
+      ? "AXERA-TECH/jina-clip-v2-tokenizer"
+      : modelVersion === "jinav1"
       ? "jinaai/jina-clip-v1-tokenizer"
       : "jinaai/jina-clip-v2-tokenizer",
   );
 
   // Vision model state (same as text model for jinav2)
   const visionModelFile =
-    modelVersion === "jinav1"
+    isAxJinaV2
+      ? "AXERA-TECH/jina-clip-v2-image_encoder.axmodel"
+      : modelVersion === "jinav1"
       ? modelSize === "large"
         ? "jinaai/jina-clip-v1-vision_model_fp16.onnx"
         : "jinaai/jina-clip-v1-vision_model_quantized.onnx"
@@ -321,13 +328,49 @@ export default function Explore() {
   const { payload: visionModelState } = useModelState(visionModelFile);
 
   // Preprocessor/feature extractor state
-  const { payload: visionFeatureExtractorState } = useModelState(
+  const { payload: visionFeatureExtractorStateRaw } = useModelState(
     modelVersion === "jinav1"
       ? "jinaai/jina-clip-v1-preprocessor_config.json"
       : "jinaai/jina-clip-v2-preprocessor_config.json",
   );
 
+
+  const visionFeatureExtractorState = useMemo(() => {
+    if (isAxJinaV2) {
+      return visionModelState ?? "downloading";
+    }
+    return visionFeatureExtractorStateRaw;
+  }, [isAxJinaV2, visionModelState, visionFeatureExtractorStateRaw]);
+
+  const effectiveTextModelState = useMemo<ModelState | undefined>(() => {
+    if (isAxJinaV2) {
+      return textModelState ?? "downloading";
+    }
+    return textModelState;
+  }, [isAxJinaV2, textModelState]);
+
+  const effectiveTextTokenizerState = useMemo<ModelState | undefined>(() => {
+    if (isAxJinaV2) {
+      return textTokenizerState ?? "downloading";
+    }
+    return textTokenizerState;
+  }, [isAxJinaV2, textTokenizerState]);
+
+  const effectiveVisionModelState = useMemo<ModelState | undefined>(() => {
+    if (isAxJinaV2) {
+      return visionModelState ?? "downloading";
+    }
+    return visionModelState;
+  }, [isAxJinaV2, visionModelState]);
+
   const allModelsLoaded = useMemo(() => {
+    if (isAxJinaV2) {
+      return (
+        effectiveTextModelState === "downloaded" &&
+        effectiveTextTokenizerState === "downloaded" &&
+        effectiveVisionModelState === "downloaded"
+      );
+    }
     return (
       textModelState === "downloaded" &&
       textTokenizerState === "downloaded" &&
@@ -335,6 +378,10 @@ export default function Explore() {
       visionFeatureExtractorState === "downloaded"
     );
   }, [
+    isAxJinaV2,
+    effectiveTextModelState,
+    effectiveTextTokenizerState,
+    effectiveVisionModelState,
     textModelState,
     textTokenizerState,
     visionModelState,
@@ -358,10 +405,10 @@ export default function Explore() {
     !defaultViewLoaded ||
     (config?.semantic_search.enabled &&
       (!reindexState ||
-        !textModelState ||
-        !textTokenizerState ||
-        !visionModelState ||
-        !visionFeatureExtractorState))
+        !(isAxJinaV2 ? effectiveTextModelState : textModelState) ||
+        !(isAxJinaV2 ? effectiveTextTokenizerState : textTokenizerState) ||
+        !(isAxJinaV2 ? effectiveVisionModelState : visionModelState) ||
+        (!isAxJinaV2 && !visionFeatureExtractorState)))
   ) {
     return (
       <ActivityIndicator className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />

@@ -81,8 +81,9 @@ class AXJinaV2Embedding(BaseEmbedding):
                 "text_encoder.axmodel": f"{HF_ENDPOINT}/AXERA-TECH/jina-clip-v2/resolve/main/text_encoder.axmodel",
             }
         )
-        
-        self.tokenizer_file = "jinaai/jina-clip-v2"
+
+        self.tokenizer_source = "jinaai/jina-clip-v2"
+        self.tokenizer_file = "tokenizer"
         self.embedding_type = embedding_type
         self.requestor = requestor
         self.model_size = model_size
@@ -129,11 +130,8 @@ class AXJinaV2Embedding(BaseEmbedding):
             if file_name in self.download_urls:
                 ModelDownloader.download_from_url(self.download_urls[file_name], path)
             elif file_name == self.tokenizer_file:
-                # if not os.path.exists(os.path.join(path, self.model_name)):
-                #     logger.info(f"Downloading {self.model_name} tokenizer")
-
                 tokenizer = AutoTokenizer.from_pretrained(
-                    self.tokenizer_file,
+                    self.tokenizer_source,
                     trust_remote_code=True,
                     cache_dir=os.path.join(
                         MODEL_CACHE_DIR, self.model_name, "tokenizer"
@@ -162,11 +160,8 @@ class AXJinaV2Embedding(BaseEmbedding):
             if self.downloader:
                 self.downloader.wait_for_download()
 
-            tokenizer_path = os.path.join(
-                self.download_path, self.tokenizer_file
-            )
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.tokenizer_file,
+                self.tokenizer_source,
                 cache_dir=os.path.join(
                     MODEL_CACHE_DIR, self.model_name, "tokenizer"
                 ),
