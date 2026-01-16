@@ -22,6 +22,7 @@ from frigate.util import (  # noqa: E402
     SharedMemoryFrameManager,
     draw_box_with_label,
 )
+from frigate.util.image import nv12_to_bgr  # noqa: E402
 from frigate.video import (  # noqa: E402
     capture_frames,
     process_frames,
@@ -183,11 +184,10 @@ class ProcessClip:
         }
 
     def save_debug_frame(self, debug_path, frame_time, tracked_objects):
-        current_frame = cv2.cvtColor(
+        current_frame = nv12_to_bgr(
             self.frame_manager.get(
                 f"{self.camera_name}{frame_time}", self.camera_config.frame_shape_yuv
-            ),
-            cv2.COLOR_YUV2BGR_I420,
+            )
         )
         # draw the bounding boxes on the frame
         for obj in tracked_objects:

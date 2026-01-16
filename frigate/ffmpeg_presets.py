@@ -213,7 +213,7 @@ PRESETS_HW_ACCEL_ENCODE_TIMELAPSE["preset-rk-h264"] = PRESETS_HW_ACCEL_ENCODE_TI
 
 # encoding of previews is only done on CPU due to comparable encode times and better quality from libx264
 PRESETS_HW_ACCEL_ENCODE_PREVIEW = {
-    "default": "{0} -hide_banner {1} -c:v libx264 -profile:v baseline -preset:v ultrafast {2}",
+    "default": "{0} -init_hw_device axmm:axmm,alloc_blk=1 -hide_banner {1} -c:v h264_axenc -profile:v baseline {2}",
 }
 
 

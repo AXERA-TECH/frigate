@@ -26,7 +26,7 @@ from frigate.const import CLIPS_DIR, MODEL_CACHE_DIR
 from frigate.embeddings.onnx.lpr_embedding import LPR_EMBEDDING_SIZE
 from frigate.types import TrackedObjectUpdateTypesEnum
 from frigate.util.builtin import EventsPerSecond, InferenceSpeed
-from frigate.util.image import area
+from frigate.util.image import area, nv12_to_bgr
 
 logger = logging.getLogger(__name__)
 
@@ -1217,7 +1217,7 @@ class LicensePlateProcessingMixin:
         if dedicated_lpr:
             id = "dedicated-lpr"
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+            rgb = nv12_to_bgr(frame)
 
             # apply motion mask
             rgb[self.config.cameras[obj_data].motion.mask == 0] = [0, 0, 0]
@@ -1321,7 +1321,7 @@ class LicensePlateProcessingMixin:
                 if not car_box:
                     return
 
-                rgb = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+                rgb = nv12_to_bgr(frame)
 
                 # apply motion mask
                 rgb[self.config.cameras[camera].motion.mask == 0] = [0, 0, 0]
@@ -1413,7 +1413,7 @@ class LicensePlateProcessingMixin:
                     )
                     return
 
-                license_plate_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+                license_plate_frame = nv12_to_bgr(frame)
 
                 # Expand the license_plate_box by 10%
                 box_array = np.array(license_plate_box)
@@ -1631,7 +1631,7 @@ class LicensePlateProcessingMixin:
             logger.debug(
                 f"{camera}: Writing snapshot for {id}, {rep_plate}, {current_time}"
             )
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+            frame_bgr = nv12_to_bgr(frame)
             _, encoded_img = cv2.imencode(".jpg", frame_bgr)
             self.sub_label_publisher.publish(
                 (base64.b64encode(encoded_img).decode("ASCII"), id, camera),

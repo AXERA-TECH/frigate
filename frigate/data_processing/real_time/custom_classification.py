@@ -25,6 +25,7 @@ from frigate.log import suppress_stderr_during
 from frigate.types import TrackedObjectUpdateTypesEnum
 from frigate.util.builtin import EventsPerSecond, InferenceSpeed, load_labels
 from frigate.util.object import box_overlaps, calculate_region
+from frigate.util.image import nv12_to_rgb
 
 from ..types import DataProcessorMetrics
 from .api import RealTimeProcessorApi
@@ -230,7 +231,7 @@ class CustomStateClassificationProcessor(RealTimeProcessorApi):
         if not should_run:
             return
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+        rgb = nv12_to_rgb(frame)
         height, width = rgb.shape[:2]
 
         # Convert normalized crop coordinates to pixel values
@@ -493,7 +494,7 @@ class CustomObjectClassificationProcessor(RealTimeProcessorApi):
             1.0,
         )
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+        rgb = nv12_to_rgb(frame)
         crop = rgb[
             y:y2,
             x:x2,

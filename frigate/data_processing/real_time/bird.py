@@ -15,6 +15,7 @@ from frigate.config import FrigateConfig
 from frigate.const import MODEL_CACHE_DIR
 from frigate.log import suppress_stderr_during
 from frigate.util.object import calculate_region
+from frigate.util.image import nv12_to_rgb
 
 from ..types import DataProcessorMetrics
 from .api import RealTimeProcessorApi
@@ -125,7 +126,7 @@ class BirdRealTimeProcessor(RealTimeProcessorApi):
             1.0,
         )
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+        rgb = nv12_to_rgb(frame)
         input = rgb[
             y:y2,
             x:x2,

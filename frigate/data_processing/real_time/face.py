@@ -27,7 +27,7 @@ from frigate.data_processing.common.face.model import (
 )
 from frigate.types import TrackedObjectUpdateTypesEnum
 from frigate.util.builtin import EventsPerSecond, InferenceSpeed
-from frigate.util.image import area
+from frigate.util.image import area, nv12_to_bgr, nv12_to_rgb
 
 from ..types import DataProcessorMetrics
 from .api import RealTimeProcessorApi
@@ -212,7 +212,7 @@ class FaceRealTimeProcessor(RealTimeProcessorApi):
                 logger.debug(f"No person box available for {id}")
                 return
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+            rgb = nv12_to_rgb(frame)
             left, top, right, bottom = person_box
             person = rgb[top:bottom, left:right]
             face_box = self.__detect_face(person, self.face_config.detection_threshold)
@@ -268,7 +268,7 @@ class FaceRealTimeProcessor(RealTimeProcessorApi):
                 logger.debug(f"Invalid face box {face}")
                 return
 
-            face_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+            face_frame = nv12_to_bgr(frame)
 
             face_frame = face_frame[
                 max(0, face_box[1]) : min(frame.shape[0], face_box[3]),

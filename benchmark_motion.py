@@ -2,6 +2,7 @@ import datetime
 import multiprocessing as mp
 import os
 
+import av
 import cv2
 import numpy as np
 
@@ -87,7 +88,11 @@ improved_motion_detector_2.save_images = save_images
 ret, frame = cap.read()
 frame_counter = 1
 while ret:
-    yuv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+    yuv_frame = (
+        av.VideoFrame.from_ndarray(frame, format="bgr24")
+        .reformat(format="nv12")
+        .to_ndarray()
+    )
 
     start_frame = datetime.datetime.now().timestamp()
     improved_motion_detector_1.detect(yuv_frame)

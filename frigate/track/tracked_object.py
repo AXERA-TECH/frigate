@@ -26,6 +26,7 @@ from frigate.util.image import (
     draw_box_with_label,
     draw_timestamp,
     is_better_thumbnail,
+    nv12_to_bgr,
 )
 from frigate.util.object import box_inside
 from frigate.util.velocity import calculate_real_world_speed
@@ -437,9 +438,8 @@ class TrackedObject:
             return None
 
         try:
-            best_frame = cv2.cvtColor(
-                self.frame_cache[self.thumbnail_data["frame_time"]]["frame"],
-                cv2.COLOR_YUV2BGR_I420,
+            best_frame = nv12_to_bgr(
+                self.frame_cache[self.thumbnail_data["frame_time"]]["frame"]
             )
         except KeyError:
             logger.warning(
@@ -468,9 +468,8 @@ class TrackedObject:
             return None
 
         try:
-            best_frame = cv2.cvtColor(
-                self.frame_cache[self.thumbnail_data["frame_time"]]["frame"],
-                cv2.COLOR_YUV2BGR_I420,
+            best_frame = nv12_to_bgr(
+                self.frame_cache[self.thumbnail_data["frame_time"]]["frame"]
             )
         except KeyError:
             logger.warning(
