@@ -19,11 +19,7 @@ import numpy as np
 from frigate.comms.inter_process import InterProcessRequestor
 from frigate.config import BirdseyeModeEnum, FfmpegConfig, FrigateConfig
 from frigate.const import BASE_DIR, BIRDSEYE_PIPE, INSTALL_DIR, UPDATE_BIRDSEYE_LAYOUT
-from frigate.util.image import (
-    SharedMemoryFrameManager,
-    copy_yuv_to_position,
-    get_yuv_crop,
-)
+from frigate.util.image import SharedMemoryFrameManager, copy_yuv_to_position
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +131,14 @@ class FFMpegConverter(threading.Thread):
 
         ffmpeg_cmd = [
             ffmpeg.ffmpeg_path,
+            "-init_hw_device",
+            "axmm:axmm,alloc_blk=1",
             "-threads",
             "1",
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "yuv420p",
+            "nv12",
             "-video_size",
             f"{in_width}x{in_height}",
             "-i",
@@ -152,7 +150,7 @@ class FFMpegConverter(threading.Thread):
             "-s",
             f"{out_width}x{out_height}",
             "-codec:v",
-            "mpeg1video",
+            "mjpeg_axenc",
             "-q",
             f"{quality}",
             "-bf",
@@ -330,16 +328,6 @@ class BirdsEyeFrameManager:
     def add_camera(self, cam: str):
         """Add a camera to self.cameras with the correct structure."""
         settings = self.config.cameras[cam]
-        # precalculate the coordinates for all the channels
-        y, u1, u2, v1, v2 = get_yuv_crop(
-            settings.frame_shape_yuv,
-            (
-                0,
-                0,
-                settings.frame_shape[1],
-                settings.frame_shape[0],
-            ),
-        )
         self.cameras[cam] = {
             "dimensions": [
                 settings.detect.width,
@@ -348,13 +336,6 @@ class BirdsEyeFrameManager:
             "last_active_frame": 0.0,
             "current_frame": 0.0,
             "layout_frame": 0.0,
-            "channel_dims": {
-                "y": y,
-                "u1": u1,
-                "u2": u2,
-                "v1": v1,
-                "v2": v2,
-            },
         }
 
     def remove_camera(self, cam: str):
@@ -369,20 +350,17 @@ class BirdsEyeFrameManager:
     def copy_to_position(self, position, camera=None, frame: np.ndarray = None):
         if camera is None:
             frame = None
-            channel_dims = None
         else:
             if frame is None:
                 logger.debug(f"Unable to copy frame {camera} to birdseye.")
                 return
-
-            channel_dims = self.cameras[camera]["channel_dims"]
 
         copy_yuv_to_position(
             self.frame,
             [position[1], position[0]],
             [position[3], position[2]],
             frame,
-            channel_dims,
+            None,
         )
 
     def camera_active(self, mode, object_box_count, motion_box_count):

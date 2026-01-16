@@ -23,7 +23,7 @@ from frigate.ffmpeg_presets import (
 )
 from frigate.models import Previews
 from frigate.track.object_processing import TrackedObject
-from frigate.util.image import copy_yuv_to_position, get_blank_yuv_frame, get_yuv_crop
+from frigate.util.image import copy_yuv_to_position, get_blank_yuv_frame, nv12_to_bgr
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class FFMpegConverter(threading.Thread):
             config.ffmpeg.ffmpeg_path,
             "default",
             input="-f concat -y -protocol_whitelist pipe,file -safe 0 -threads 1 -i /dev/stdin",
-            output=f"-threads 1 -g {PREVIEW_KEYFRAME_INTERVAL} -bf 0 -b:v {PREVIEW_QUALITY_BIT_RATES[self.config.record.preview.quality]} {FPS_VFR_PARAM} -movflags +faststart -pix_fmt yuv420p {self.path}",
+            output=f"-threads 1 -g {PREVIEW_KEYFRAME_INTERVAL} -bf 0 -b:v {PREVIEW_QUALITY_BIT_RATES[self.config.record.preview.quality]} {FPS_VFR_PARAM} -movflags +faststart -pix_fmt nv12 {self.path}",
             type=EncodeTypeEnum.preview,
         )
 
@@ -173,23 +173,6 @@ class PreviewRecorder:
 
         # create communication for finished previews
         self.requestor = InterProcessRequestor()
-
-        y, u1, u2, v1, v2 = get_yuv_crop(
-            self.config.frame_shape_yuv,
-            (
-                0,
-                0,
-                self.config.frame_shape[1],
-                self.config.frame_shape[0],
-            ),
-        )
-        self.channel_dims = {
-            "y": y,
-            "u1": u1,
-            "u2": u2,
-            "v1": v1,
-            "v2": v2,
-        }
 
         # end segment at end of hour
         self.segment_end = (
@@ -294,13 +277,10 @@ class PreviewRecorder:
             (0, 0),
             (self.out_height, self.out_width),
             frame,
-            self.channel_dims,
+            None,
             cv2.INTER_AREA,
         )
-        small_frame = cv2.cvtColor(
-            small_frame,
-            cv2.COLOR_YUV2BGR_I420,
-        )
+        small_frame = nv12_to_bgr(small_frame)
         cv2.imwrite(
             get_cache_image_name(self.config.name, frame_time),
             small_frame,

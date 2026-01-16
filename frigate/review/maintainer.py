@@ -32,7 +32,11 @@ from frigate.const import (
 from frigate.models import ReviewSegment
 from frigate.review.types import SeverityEnum
 from frigate.track.object_processing import ManualEventState, TrackedObject
-from frigate.util.image import SharedMemoryFrameManager, calculate_16_9_crop
+from frigate.util.image import (
+    SharedMemoryFrameManager,
+    calculate_16_9_crop,
+    nv12_to_bgr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +104,7 @@ class PendingReviewSegment:
             return
 
         self.frame_active_count = len(objects)
-        color_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+        color_frame = nv12_to_bgr(frame)
         color_frame = color_frame[region[1] : region[3], region[0] : region[2]]
         width = int(THUMB_HEIGHT * color_frame.shape[1] / color_frame.shape[0])
         self._frame = cv2.resize(
@@ -115,7 +119,7 @@ class PendingReviewSegment:
             )
 
     def save_full_frame(self, camera_config: CameraConfig, frame):
-        color_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+        color_frame = nv12_to_bgr(frame)
         width = int(THUMB_HEIGHT * color_frame.shape[1] / color_frame.shape[0])
         self._frame = cv2.resize(
             color_frame, dsize=(width, THUMB_HEIGHT), interpolation=cv2.INTER_AREA

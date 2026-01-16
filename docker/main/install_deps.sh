@@ -36,8 +36,8 @@ rm /tmp/libedgetpu1-max.deb
 # install mesa-teflon-delegate from bookworm-backports
 # Only available for arm64 at the moment
 if [[ "${TARGETARCH}" == "arm64" ]]; then
-    if [[ "${BASE_IMAGE}" == *"nvcr.io/nvidia/tensorrt"* ]]; then
-        echo "Info: Skipping apt-get commands because BASE_IMAGE includes 'nvcr.io/nvidia/tensorrt' for arm64."
+    if [[ "${BASE_IMAGE}" == *"nvcr.io/nvidia/tensorrt"* ]] || [[ "${BASE_IMAGE}" == "ubuntu:22.04" ]]; then
+        echo "Info: Skipping apt-get commands because BASE_IMAGE includes 'nvcr.io/nvidia/tensorrt' for arm64 or is ubuntu:22.04."
     else
         echo "deb http://deb.debian.org/debian bookworm-backports main" | tee /etc/apt/sources.list.d/bookworm-backbacks.list
         apt-get -qq update

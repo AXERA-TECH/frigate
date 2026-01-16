@@ -49,7 +49,7 @@ from frigate.const import (
 from frigate.models import Event, Previews, Recordings, Regions, ReviewSegment
 from frigate.track.object_processing import TrackedObjectProcessor
 from frigate.util.file import get_event_thumbnail_bytes
-from frigate.util.image import get_image_from_recording
+from frigate.util.image import get_image_from_recording, nv12_to_bgr
 from frigate.util.time import get_dst_transitions
 
 logger = logging.getLogger(__name__)
@@ -214,10 +214,7 @@ async def latest_frame(
         and request.app.frigate_config.birdseye.enabled
         and request.app.frigate_config.birdseye.restream
     ):
-        frame = cv2.cvtColor(
-            frame_processor.get_current_frame(camera_name),
-            cv2.COLOR_YUV2BGR_I420,
-        )
+        frame = nv12_to_bgr(frame_processor.get_current_frame(camera_name))
 
         height = int(params.height or str(frame.shape[0]))
         width = int(height * frame.shape[1] / frame.shape[0])
@@ -1709,6 +1706,8 @@ def preview_mp4(
         config: FrigateConfig = request.app.frigate_config
         ffmpeg_cmd = [
             config.ffmpeg.ffmpeg_path,
+            "-init_hw_device",
+            "axmm:axmm,alloc_blk=1",
             "-hide_banner",
             "-loglevel",
             "warning",
@@ -1724,7 +1723,7 @@ def preview_mp4(
             "-vf",
             "setpts=0.12*PTS",
             "-c:v",
-            "libx264",
+            "h264_axenc",
             "-movflags",
             "+faststart",
             path,
@@ -1775,6 +1774,8 @@ def preview_mp4(
 
         ffmpeg_cmd = [
             config.ffmpeg.ffmpeg_path,
+            "-init_hw_device",
+            "axmm:axmm,alloc_blk=1",
             "-hide_banner",
             "-loglevel",
             "warning",
@@ -1788,7 +1789,7 @@ def preview_mp4(
             "-i",
             "/dev/stdin",
             "-c:v",
-            "libx264",
+            "h264_axenc",
             "-movflags",
             "+faststart",
             path,

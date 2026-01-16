@@ -2,38 +2,30 @@ from unittest import TestCase, main
 
 import cv2
 import numpy as np
+import av
 
-from frigate.util.image import copy_yuv_to_position, get_yuv_crop
+from frigate.util.image import copy_yuv_to_position
+
+
+def bgr_to_nv12(frame_bgr: np.ndarray) -> np.ndarray:
+    """Convert BGR to NV12 using PyAV (FFmpeg swscale)."""
+    # av expects width x height in frame; format bgr24 accepted
+    frame = av.VideoFrame.from_ndarray(frame_bgr, format="bgr24")
+    nv12 = frame.reformat(format="nv12")
+    return nv12.to_ndarray()
 
 
 class TestCopyYuvToPosition(TestCase):
     def setUp(self):
         self.source_frame_bgr = np.zeros((400, 800, 3), np.uint8)
         self.source_frame_bgr[:] = (0, 0, 255)
-        self.source_yuv_frame = cv2.cvtColor(
-            self.source_frame_bgr, cv2.COLOR_BGR2YUV_I420
-        )
-        y, u1, u2, v1, v2 = get_yuv_crop(
-            self.source_yuv_frame.shape,
-            (
-                0,
-                0,
-                self.source_frame_bgr.shape[1],
-                self.source_frame_bgr.shape[0],
-            ),
-        )
-        self.source_channel_dims = {
-            "y": y,
-            "u1": u1,
-            "u2": u2,
-            "v1": v1,
-            "v2": v2,
-        }
+        self.source_yuv_frame = bgr_to_nv12(self.source_frame_bgr)
+        self.source_channel_dims = None
 
         self.dest_frame_bgr = np.zeros((400, 800, 3), np.uint8)
         self.dest_frame_bgr[:] = (112, 202, 50)
         self.dest_frame_bgr[100:300, 200:600] = (255, 0, 0)
-        self.dest_yuv_frame = cv2.cvtColor(self.dest_frame_bgr, cv2.COLOR_BGR2YUV_I420)
+        self.dest_yuv_frame = bgr_to_nv12(self.dest_frame_bgr)
 
     def test_clear_position(self):
         copy_yuv_to_position(self.dest_yuv_frame, (100, 100), (100, 100))

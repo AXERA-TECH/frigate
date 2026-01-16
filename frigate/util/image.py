@@ -10,6 +10,7 @@ from multiprocessing import shared_memory as _mpshm
 from string import printable
 from typing import Any, AnyStr, Optional
 
+import av
 import cv2
 import numpy as np
 from unidecode import unidecode
@@ -363,171 +364,87 @@ def calculate_16_9_crop(frame_shape, xmin, ymin, xmax, ymax, multiplier=1.25):
 
 
 def get_yuv_crop(frame_shape, crop):
-    # crop should be (x1,y1,x2,y2)
-    frame_height = frame_shape[0] // 3 * 2
+    # crop should be (x1,y1,x2,y2) on the luma plane; for NV12 uv is interleaved
+    frame_height = frame_shape[0] * 2 // 3
     frame_width = frame_shape[1]
 
-    # compute the width/height of the uv channels
-    uv_width = frame_width // 2  # width of the uv channels
-    uv_height = frame_height // 4  # height of the uv channels
+    # enforce even boundaries for 4:2:0
+    x1 = max(0, (crop[0] // 2) * 2)
+    y1 = max(0, (crop[1] // 2) * 2)
+    x2 = min(frame_width, (crop[2] // 2) * 2)
+    y2 = min(frame_height, (crop[3] // 2) * 2)
 
-    # compute the offset for upper left corner of the uv channels
-    uv_x_offset = crop[0] // 2  # x offset of the uv channels
-    uv_y_offset = crop[1] // 4  # y offset of the uv channels
-
-    # compute the width/height of the uv crops
-    uv_crop_width = (crop[2] - crop[0]) // 2  # width of the cropped uv channels
-    uv_crop_height = (crop[3] - crop[1]) // 4  # height of the cropped uv channels
-
-    # ensure crop dimensions are multiples of 2 and 4
-    y = (crop[0], crop[1], crop[0] + uv_crop_width * 2, crop[1] + uv_crop_height * 4)
-
-    u1 = (
-        0 + uv_x_offset,
-        frame_height + uv_y_offset,
-        0 + uv_x_offset + uv_crop_width,
-        frame_height + uv_y_offset + uv_crop_height,
+    y = (x1, y1, x2, y2)
+    uv = (
+        x1,
+        frame_height + y1 // 2,
+        x2,
+        frame_height + y2 // 2,
     )
 
-    u2 = (
-        uv_width + uv_x_offset,
-        frame_height + uv_y_offset,
-        uv_width + uv_x_offset + uv_crop_width,
-        frame_height + uv_y_offset + uv_crop_height,
-    )
-
-    v1 = (
-        0 + uv_x_offset,
-        frame_height + uv_height + uv_y_offset,
-        0 + uv_x_offset + uv_crop_width,
-        frame_height + uv_height + uv_y_offset + uv_crop_height,
-    )
-
-    v2 = (
-        uv_width + uv_x_offset,
-        frame_height + uv_height + uv_y_offset,
-        uv_width + uv_x_offset + uv_crop_width,
-        frame_height + uv_height + uv_y_offset + uv_crop_height,
-    )
-
-    return y, u1, u2, v1, v2
+    return y, uv
 
 
 def yuv_crop_and_resize(frame, region, height=None):
     # Crops and resizes a YUV frame while maintaining aspect ratio
     # https://stackoverflow.com/a/57022634
-    height = frame.shape[0] // 3 * 2
-    width = frame.shape[1]
+    frame_height = frame.shape[0] * 2 // 3
+    frame_width = frame.shape[1]
 
-    # get the crop box if the region extends beyond the frame
-    crop_x1 = max(0, region[0])
-    crop_y1 = max(0, region[1])
-    # ensure these are a multiple of 4
-    crop_x2 = min(width, region[2])
-    crop_y2 = min(height, region[3])
+    crop_x1 = max(0, (region[0] // 2) * 2)
+    crop_y1 = max(0, (region[1] // 2) * 2)
+    crop_x2 = min(frame_width, (region[2] // 2) * 2)
+    crop_y2 = min(frame_height, (region[3] // 2) * 2)
     crop_box = (crop_x1, crop_y1, crop_x2, crop_y2)
 
-    y, u1, u2, v1, v2 = get_yuv_crop(frame.shape, crop_box)
+    y, uv = get_yuv_crop(frame.shape, crop_box)
 
-    # if the region starts outside the frame, indent the start point in the cropped frame
-    y_channel_x_offset = abs(min(0, region[0]))
-    y_channel_y_offset = abs(min(0, region[1]))
+    y_channel_x_offset = abs(min(0, region[0])) // 2 * 2
+    y_channel_y_offset = abs(min(0, region[1])) // 2 * 2
+    uv_channel_x_offset = y_channel_x_offset
+    uv_channel_y_offset = y_channel_y_offset // 2
 
-    uv_channel_x_offset = y_channel_x_offset // 2
-    uv_channel_y_offset = y_channel_y_offset // 4
-
-    # create the yuv region frame
-    # make sure the size is a multiple of 4
-    # TODO: this should be based on the size after resize now
     size = (region[3] - region[1]) // 4 * 4
     yuv_cropped_frame = np.zeros((size + size // 2, size), np.uint8)
-    # fill in black
     yuv_cropped_frame[:] = 128
     yuv_cropped_frame[0:size, 0:size] = 16
 
-    # copy the y channel
+    y_width = y[2] - y[0]
+    y_height = y[3] - y[1]
     yuv_cropped_frame[
-        y_channel_y_offset : y_channel_y_offset + y[3] - y[1],
-        y_channel_x_offset : y_channel_x_offset + y[2] - y[0],
+        y_channel_y_offset : y_channel_y_offset + y_height,
+        y_channel_x_offset : y_channel_x_offset + y_width,
     ] = frame[y[1] : y[3], y[0] : y[2]]
 
-    uv_crop_width = u1[2] - u1[0]
-    uv_crop_height = u1[3] - u1[1]
-
-    # copy u1
+    uv_width = uv[2] - uv[0]
+    uv_height = uv[3] - uv[1]
     yuv_cropped_frame[
-        size + uv_channel_y_offset : size + uv_channel_y_offset + uv_crop_height,
-        0 + uv_channel_x_offset : 0 + uv_channel_x_offset + uv_crop_width,
-    ] = frame[u1[1] : u1[3], u1[0] : u1[2]]
-
-    # copy u2
-    yuv_cropped_frame[
-        size + uv_channel_y_offset : size + uv_channel_y_offset + uv_crop_height,
-        size // 2 + uv_channel_x_offset : size // 2
-        + uv_channel_x_offset
-        + uv_crop_width,
-    ] = frame[u2[1] : u2[3], u2[0] : u2[2]]
-
-    # copy v1
-    yuv_cropped_frame[
-        size + size // 4 + uv_channel_y_offset : size
-        + size // 4
-        + uv_channel_y_offset
-        + uv_crop_height,
-        0 + uv_channel_x_offset : 0 + uv_channel_x_offset + uv_crop_width,
-    ] = frame[v1[1] : v1[3], v1[0] : v1[2]]
-
-    # copy v2
-    yuv_cropped_frame[
-        size + size // 4 + uv_channel_y_offset : size
-        + size // 4
-        + uv_channel_y_offset
-        + uv_crop_height,
-        size // 2 + uv_channel_x_offset : size // 2
-        + uv_channel_x_offset
-        + uv_crop_width,
-    ] = frame[v2[1] : v2[3], v2[0] : v2[2]]
+        size + uv_channel_y_offset : size + uv_channel_y_offset + uv_height,
+        uv_channel_x_offset : uv_channel_x_offset + uv_width,
+    ] = frame[uv[1] : uv[3], uv[0] : uv[2]]
 
     return yuv_cropped_frame
 
 
 def yuv_to_3_channel_yuv(yuv_frame):
-    height = yuv_frame.shape[0] // 3 * 2
+    height = yuv_frame.shape[0] * 2 // 3
     width = yuv_frame.shape[1]
+    uv_height = height // 2
 
-    # flatten the image into array
-    yuv_data = yuv_frame.ravel()
+    y_plane = yuv_frame[0:height, :]
+    uv_plane = yuv_frame[height : height + uv_height, :]
 
-    # create a numpy array to hold all the 3 channel yuv data
+    uv_pairs = uv_plane.reshape(uv_height, width // 2, 2)
+    u_plane = uv_pairs[:, :, 0]
+    v_plane = uv_pairs[:, :, 1]
+
+    u_up = np.repeat(np.repeat(u_plane, 2, axis=0), 2, axis=1)
+    v_up = np.repeat(np.repeat(v_plane, 2, axis=0), 2, axis=1)
+
     all_yuv_data = np.empty((height, width, 3), dtype=np.uint8)
-
-    y_count = height * width
-    uv_count = y_count // 4
-
-    # copy the y_channel
-    all_yuv_data[:, :, 0] = yuv_data[0:y_count].reshape((height, width))
-    # copy the u channel doubling each dimension
-    all_yuv_data[:, :, 1] = np.repeat(
-        np.reshape(
-            np.repeat(yuv_data[y_count : y_count + uv_count], repeats=2, axis=0),
-            (height // 2, width),
-        ),
-        repeats=2,
-        axis=0,
-    )
-    # copy the v channel doubling each dimension
-    all_yuv_data[:, :, 2] = np.repeat(
-        np.reshape(
-            np.repeat(
-                yuv_data[y_count + uv_count : y_count + uv_count + uv_count],
-                repeats=2,
-                axis=0,
-            ),
-            (height // 2, width),
-        ),
-        repeats=2,
-        axis=0,
-    )
+    all_yuv_data[:, :, 0] = y_plane
+    all_yuv_data[:, :, 1] = u_up
+    all_yuv_data[:, :, 2] = v_up
 
     return all_yuv_data
 
@@ -540,8 +457,7 @@ def copy_yuv_to_position(
     source_channel_dim=None,
     interpolation=cv2.INTER_LINEAR,
 ):
-    # get the coordinates of the channels for this position in the layout
-    y, u1, u2, v1, v2 = get_yuv_crop(
+    y, uv = get_yuv_crop(
         destination_frame.shape,
         (
             destination_offset[1],
@@ -551,119 +467,97 @@ def copy_yuv_to_position(
         ),
     )
 
-    # clear y
+    destination_frame[y[1] : y[3], y[0] : y[2]] = 16
+    destination_frame[uv[1] : uv[3], uv[0] : uv[2]] = 128
+
+    if source_frame is None:
+        return
+
+    if source_channel_dim is None:
+        source_height = source_frame.shape[0] * 2 // 3
+        source_y_box = (0, 0, source_frame.shape[1], source_height)
+        source_uv_box = (0, source_height, source_frame.shape[1], source_frame.shape[0])
+    else:
+        source_y_box = source_channel_dim["y"]
+        source_uv_box = source_channel_dim["uv"]
+
+    source_y = source_frame[
+        source_y_box[1] : source_y_box[3], source_y_box[0] : source_y_box[2]
+    ]
+    source_uv = source_frame[
+        source_uv_box[1] : source_uv_box[3], source_uv_box[0] : source_uv_box[2]
+    ]
+
+    source_aspect_ratio = source_y.shape[1] / source_y.shape[0]
+    dest_aspect_ratio = destination_shape[1] / destination_shape[0]
+
+    if source_aspect_ratio <= dest_aspect_ratio:
+        y_resize_height = destination_shape[0] // 2 * 2
+        y_resize_width = int(y_resize_height * source_aspect_ratio) // 2 * 2
+    else:
+        y_resize_width = destination_shape[1] // 2 * 2
+        y_resize_height = int(y_resize_width / source_aspect_ratio) // 2 * 2
+
+    uv_resize_width = y_resize_width
+    uv_resize_height = y_resize_height // 2
+
+    y_y_offset = ((destination_shape[0] - y_resize_height) // 2) // 2 * 2
+    y_x_offset = ((destination_shape[1] - y_resize_width) // 2) // 2 * 2
+    uv_y_offset = y_y_offset // 2
+    uv_x_offset = y_x_offset
+
+    resized_y = cv2.resize(
+        source_y,
+        dsize=(y_resize_width, y_resize_height),
+        interpolation=interpolation,
+    )
+
+    uv_pairs = source_uv.reshape(source_uv.shape[0], source_uv.shape[1] // 2, 2)
+    resized_uv_pairs = cv2.resize(
+        uv_pairs,
+        dsize=(uv_resize_width // 2, uv_resize_height),
+        interpolation=interpolation,
+    )
+    resized_uv = resized_uv_pairs.reshape(uv_resize_height, uv_resize_width)
+
     destination_frame[
-        y[1] : y[3],
-        y[0] : y[2],
-    ] = 16
+        y[1] + y_y_offset : y[1] + y_y_offset + y_resize_height,
+        y[0] + y_x_offset : y[0] + y_x_offset + y_resize_width,
+    ] = resized_y
 
-    # clear u1
-    destination_frame[u1[1] : u1[3], u1[0] : u1[2]] = 128
-    # clear u2
-    destination_frame[u2[1] : u2[3], u2[0] : u2[2]] = 128
-    # clear v1
-    destination_frame[v1[1] : v1[3], v1[0] : v1[2]] = 128
-    # clear v2
-    destination_frame[v2[1] : v2[3], v2[0] : v2[2]] = 128
-
-    if source_frame is not None:
-        # calculate the resized frame, maintaining the aspect ratio
-        source_aspect_ratio = source_frame.shape[1] / (source_frame.shape[0] // 3 * 2)
-        dest_aspect_ratio = destination_shape[1] / destination_shape[0]
-
-        if source_aspect_ratio <= dest_aspect_ratio:
-            y_resize_height = int(destination_shape[0] // 4 * 4)
-            y_resize_width = int((y_resize_height * source_aspect_ratio) // 4 * 4)
-        else:
-            y_resize_width = int(destination_shape[1] // 4 * 4)
-            y_resize_height = int((y_resize_width / source_aspect_ratio) // 4 * 4)
-
-        uv_resize_width = int(y_resize_width // 2)
-        uv_resize_height = int(y_resize_height // 4)
-
-        y_y_offset = int((destination_shape[0] - y_resize_height) / 4 // 4 * 4)
-        y_x_offset = int((destination_shape[1] - y_resize_width) / 2 // 4 * 4)
-
-        uv_y_offset = y_y_offset // 4
-        uv_x_offset = y_x_offset // 2
-
-        # resize/copy y channel
-        destination_frame[
-            y[1] + y_y_offset : y[1] + y_y_offset + y_resize_height,
-            y[0] + y_x_offset : y[0] + y_x_offset + y_resize_width,
-        ] = cv2.resize(
-            source_frame[
-                source_channel_dim["y"][1] : source_channel_dim["y"][3],
-                source_channel_dim["y"][0] : source_channel_dim["y"][2],
-            ],
-            dsize=(y_resize_width, y_resize_height),
-            interpolation=interpolation,
-        )
-
-        # resize/copy u1
-        destination_frame[
-            u1[1] + uv_y_offset : u1[1] + uv_y_offset + uv_resize_height,
-            u1[0] + uv_x_offset : u1[0] + uv_x_offset + uv_resize_width,
-        ] = cv2.resize(
-            source_frame[
-                source_channel_dim["u1"][1] : source_channel_dim["u1"][3],
-                source_channel_dim["u1"][0] : source_channel_dim["u1"][2],
-            ],
-            dsize=(uv_resize_width, uv_resize_height),
-            interpolation=interpolation,
-        )
-        # resize/copy u2
-        destination_frame[
-            u2[1] + uv_y_offset : u2[1] + uv_y_offset + uv_resize_height,
-            u2[0] + uv_x_offset : u2[0] + uv_x_offset + uv_resize_width,
-        ] = cv2.resize(
-            source_frame[
-                source_channel_dim["u2"][1] : source_channel_dim["u2"][3],
-                source_channel_dim["u2"][0] : source_channel_dim["u2"][2],
-            ],
-            dsize=(uv_resize_width, uv_resize_height),
-            interpolation=interpolation,
-        )
-        # resize/copy v1
-        destination_frame[
-            v1[1] + uv_y_offset : v1[1] + uv_y_offset + uv_resize_height,
-            v1[0] + uv_x_offset : v1[0] + uv_x_offset + uv_resize_width,
-        ] = cv2.resize(
-            source_frame[
-                source_channel_dim["v1"][1] : source_channel_dim["v1"][3],
-                source_channel_dim["v1"][0] : source_channel_dim["v1"][2],
-            ],
-            dsize=(uv_resize_width, uv_resize_height),
-            interpolation=interpolation,
-        )
-        # resize/copy v2
-        destination_frame[
-            v2[1] + uv_y_offset : v2[1] + uv_y_offset + uv_resize_height,
-            v2[0] + uv_x_offset : v2[0] + uv_x_offset + uv_resize_width,
-        ] = cv2.resize(
-            source_frame[
-                source_channel_dim["v2"][1] : source_channel_dim["v2"][3],
-                source_channel_dim["v2"][0] : source_channel_dim["v2"][2],
-            ],
-            dsize=(uv_resize_width, uv_resize_height),
-            interpolation=interpolation,
-        )
+    destination_frame[
+        uv[1] + uv_y_offset : uv[1] + uv_y_offset + uv_resize_height,
+        uv[0] + uv_x_offset : uv[0] + uv_x_offset + uv_resize_width,
+    ] = resized_uv
 
 
 def get_blank_yuv_frame(width: int, height: int) -> np.ndarray:
     """Creates a black YUV 4:2:0 frame."""
-    yuv_height = height * 3 // 2
+    yuv_height = height + height // 2
     yuv_frame = np.zeros((yuv_height, width), dtype=np.uint8)
 
-    uv_height = height // 2
-
-    # The U and V planes are stored after the Y plane.
-    u_start = height  # U plane starts right after Y plane
-    v_start = u_start + uv_height // 2  # V plane starts after U plane
-    yuv_frame[u_start : u_start + uv_height, :width] = 128
-    yuv_frame[v_start : v_start + uv_height, :width] = 128
+    yuv_frame[0:height, :width] = 16
+    yuv_frame[height : height + height // 2, :width] = 128
 
     return yuv_frame
+
+
+def nv12_to_bgr(frame: np.ndarray) -> np.ndarray:
+    """Convert NV12 frame to BGR using PyAV."""
+    return (
+        av.VideoFrame.from_ndarray(frame, format="nv12")
+        .reformat(format="bgr24")
+        .to_ndarray()
+    )
+
+
+def nv12_to_rgb(frame: np.ndarray) -> np.ndarray:
+    """Convert NV12 frame to RGB using PyAV."""
+    return (
+        av.VideoFrame.from_ndarray(frame, format="nv12")
+        .reformat(format="rgb24")
+        .to_ndarray()
+    )
 
 
 def yuv_region_2_yuv(frame, region):
@@ -681,7 +575,7 @@ def yuv_region_2_rgb(frame, region):
     try:
         # TODO: does this copy the numpy array?
         yuv_cropped_frame = yuv_crop_and_resize(frame, region)
-        return cv2.cvtColor(yuv_cropped_frame, cv2.COLOR_YUV2RGB_I420)
+        return nv12_to_rgb(yuv_cropped_frame)
     except:
         print(f"frame.shape: {frame.shape}")
         print(f"region: {region}")
@@ -691,7 +585,7 @@ def yuv_region_2_rgb(frame, region):
 def yuv_region_2_bgr(frame, region):
     try:
         yuv_cropped_frame = yuv_crop_and_resize(frame, region)
-        return cv2.cvtColor(yuv_cropped_frame, cv2.COLOR_YUV2BGR_I420)
+        return nv12_to_bgr(yuv_cropped_frame)
     except:
         print(f"frame.shape: {frame.shape}")
         print(f"region: {region}")
@@ -1012,7 +906,7 @@ def get_image_from_recording(
 
 
 def get_histogram(image, x_min, y_min, x_max, y_max):
-    image_bgr = cv2.cvtColor(image, cv2.COLOR_YUV2BGR_I420)
+    image_bgr = nv12_to_bgr(image)
     image_bgr = image_bgr[y_min:y_max, x_min:x_max]
 
     hist = cv2.calcHist(
@@ -1025,7 +919,7 @@ def create_thumbnail(
     yuv_frame: np.ndarray, box: tuple[int, int, int, int], height=500
 ) -> Optional[bytes]:
     """Return jpg thumbnail of a region of the frame."""
-    frame = cv2.cvtColor(yuv_frame, cv2.COLOR_YUV2BGR_I420)
+    frame = nv12_to_bgr(yuv_frame)
     region = calculate_region(
         frame.shape, box[0], box[1], box[2], box[3], height, multiplier=1.4
     )

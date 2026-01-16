@@ -105,7 +105,7 @@ class PtzMotionEstimator:
                 self.coord_transformations = None
                 return None
 
-            frame = cv2.cvtColor(yuv_frame, cv2.COLOR_YUV2GRAY_I420)
+            frame = cv2.cvtColor(yuv_frame, cv2.COLOR_YUV2GRAY_NV12)
 
             # mask out detections for better motion estimation
             mask = np.ones(frame.shape[:2], frame.dtype)

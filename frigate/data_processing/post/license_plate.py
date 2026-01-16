@@ -4,6 +4,7 @@ import datetime
 import logging
 from typing import Any
 
+import av
 import cv2
 import numpy as np
 from peewee import DoesNotExist
@@ -136,7 +137,11 @@ class LicensePlatePostProcessor(LicensePlateProcessingMixin, PostProcessorApi):
             )
 
         # convert to yuv for processing
-        frame = cv2.cvtColor(image, cv2.COLOR_BGR2YUV_I420)
+        frame = (
+            av.VideoFrame.from_ndarray(image, format="bgr24")
+            .reformat(format="nv12")
+            .to_ndarray()
+        )
 
         detect_width = self.config.cameras[camera_name].detect.width
         detect_height = self.config.cameras[camera_name].detect.height

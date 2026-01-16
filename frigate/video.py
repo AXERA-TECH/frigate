@@ -8,6 +8,7 @@ from multiprocessing import Queue, Value
 from multiprocessing.synchronize import Event as MpEvent
 from typing import Any
 
+import av
 import cv2
 
 from frigate.camera import CameraMetrics, PTZMetrics
@@ -998,9 +999,10 @@ def process_frames(
 
         # debug object tracking
         if False:
-            bgr_frame = cv2.cvtColor(
-                frame,
-                cv2.COLOR_YUV2BGR_I420,
+            bgr_frame = (
+                av.VideoFrame.from_ndarray(frame, format="nv12")
+                .reformat(format="bgr24")
+                .to_ndarray()
             )
             object_tracker.debug_draw(bgr_frame, frame_time)
             cv2.imwrite(
@@ -1008,9 +1010,10 @@ def process_frames(
             )
         # debug
         if False:
-            bgr_frame = cv2.cvtColor(
-                frame,
-                cv2.COLOR_YUV2BGR_I420,
+            bgr_frame = (
+                av.VideoFrame.from_ndarray(frame, format="nv12")
+                .reformat(format="bgr24")
+                .to_ndarray()
             )
 
             for m_box in motion_boxes:
