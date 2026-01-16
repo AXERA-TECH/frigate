@@ -113,7 +113,8 @@ jobs:
               path_or_fileobj=filename,
               path_in_repo=filename,
               repo_id=repo_id,
-              repo_type=repo_type
+              repo_type=repo_type,
+              revision='v0.17-ax650'
           )
           print('Upload completed!')
           "
