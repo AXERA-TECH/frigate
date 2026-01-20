@@ -65,6 +65,7 @@ class AXClipRunner:
                 )
         return np.array(text_embeddings), np.array(image_embeddings)
 
+
 class AXJinaV2Embedding(BaseEmbedding):
     def __init__(
         self,
