@@ -34,16 +34,16 @@ class AXClipRunner:
         self.text_encoder_runner = axe.InferenceSession(text_encoder_path)
 
         for input in self.image_encoder_runner.get_inputs():
-            logger.info(input.name, input.shape, input.dtype)
+            logger.info(f"{input.name} {input.shape} {input.dtype}")
 
         for output in self.image_encoder_runner.get_outputs():
-            logger.info(output.name, output.shape, output.dtype)
+            logger.info(f"{output.name} {output.shape} {output.dtype}")
 
         for input in self.text_encoder_runner.get_inputs():
-            logger.info(input.name, input.shape, input.dtype)
+            logger.info(f"{input.name} {input.shape} {input.dtype}")
 
         for output in self.text_encoder_runner.get_outputs():
-            logger.info(output.name, output.shape, output.dtype)
+            logger.info(f"{output.name} {output.shape} {output.dtype}")
 
     def run(self, onnx_inputs):
         text_embeddings = []
