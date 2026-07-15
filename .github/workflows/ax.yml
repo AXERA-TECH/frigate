@@ -1,0 +1,150 @@
+name: AXERA
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "要构建的 Axera 镜像"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - ax650
+          - x86-axcl
+          - rk-axcl
+          - rpi-axcl
+      upload_to_hf:
+        description: "是否上传 Docker tar 到 Hugging Face"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      hf_repo_id:
+        description: "Hugging Face Repository ID"
+        required: false
+        default: "AXERA-TECH/frigate-resource"
+      hf_repo_type:
+        description: "Hugging Face repository type"
+        required: false
+        default: "model"
+        type: choice
+        options:
+          - model
+          - dataset
+          - space
+      hf_revision:
+        description: "Hugging Face revision/branch"
+        required: false
+        default: "axera-dev"
+
+permissions:
+  contents: read
+  packages: write
+  actions: read
+
+concurrency:
+  group: axera-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+jobs:
+  axera_builds:
+    name: ${{ matrix.target }} Build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ax650
+            runner: ubuntu-22.04-arm
+            bake_args: --file=docker/axera/ax650.hcl
+          - target: x86-axcl
+            runner: ubuntu-22.04
+            bake_args: --file=docker/axcl/x86-axcl.hcl
+          - target: rk-axcl
+            runner: ubuntu-22.04-arm
+            bake_args: --file=docker/rockchip/rk.hcl --file=docker/axcl/rk-axcl.hcl
+          - target: rpi-axcl
+            runner: ubuntu-22.04-arm
+            bake_args: --file=docker/rpi/rpi.hcl --file=docker/axcl/rpi-axcl.hcl
+    steps:
+      - name: Skip unselected target
+        if: ${{ inputs.target != 'all' && inputs.target != matrix.target }}
+        run: echo "跳过 ${{ matrix.target }}，当前选择为 ${{ inputs.target }}"
+
+      - name: Check out code
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU and Buildx
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+        id: setup
+        uses: ./.github/actions/setup
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create image tag
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=frigate:${{ matrix.target }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+          echo "TAR_PATH=frigate-${{ matrix.target }}-${GITHUB_SHA::7}.tar" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+        env:
+          BAKE_ARGS: ${{ matrix.bake_args }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker buildx bake ${BAKE_ARGS} ${TARGET} \
+            --set ${TARGET}.tags=${IMAGE_TAG} \
+            --load
+
+      - name: Save Docker image as tar
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+        run: |
+          docker save "${IMAGE_TAG}" -o "${TAR_PATH}"
+          ls -lh "${TAR_PATH}"
+
+      - name: Upload Docker image artifact
+        if: ${{ inputs.target == 'all' || inputs.target == matrix.target }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}-docker-image
+          path: ${{ env.TAR_PATH }}
+          retention-days: 7
+
+      - name: Upload to Hugging Face Hub
+        if: ${{ (inputs.target == 'all' || inputs.target == matrix.target) && inputs.upload_to_hf == 'true' }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ inputs.hf_repo_id }}
+          HF_REPO_TYPE: ${{ inputs.hf_repo_type }}
+          HF_REVISION: ${{ inputs.hf_revision }}
+        run: |
+          if [ -z "${HF_TOKEN}" ]; then
+            echo "HF_TOKEN secret 未设置"
+            exit 1
+          fi
+
+          python3 -m pip install huggingface_hub
+
+          python3 - <<'PY'
+          from huggingface_hub import HfApi
+          import os
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          tar_path = os.environ["TAR_PATH"]
+          api.upload_file(
+              path_or_fileobj=tar_path,
+              path_in_repo=tar_path,
+              repo_id=os.environ["HF_REPO_ID"],
+              repo_type=os.environ["HF_REPO_TYPE"],
+              revision=os.environ["HF_REVISION"],
+          )
+          print(f"已上传 {tar_path} 到 {os.environ['HF_REPO_ID']}:{os.environ['HF_REVISION']}")
+          PY

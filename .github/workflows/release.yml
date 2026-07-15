@@ -1,52 +1,153 @@
-name: On release
+name: Axera release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号，例如 0.17.2 或 v0.17.2-axera"
+        required: true
+      target:
+        description: "要构建的 Axera 镜像"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - ax650
+          - x86-axcl
+          - rk-axcl
+          - rpi-axcl
   release:
     types: [published]
 
-jobs:
-  release:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
+  packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOCKER_BUILD_SUMMARY: "false"
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+
+jobs:
+  axera_release_builds:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ax650
+            name: AX650 Release Build
+            runner: ubuntu-22.04-arm
+            files: docker/axera/ax650.hcl
+          - target: x86-axcl
+            name: x86 AXCL Release Build
+            runner: ubuntu-22.04
+            files: docker/axcl/x86-axcl.hcl
+          - target: rk-axcl
+            name: Rockchip AXCL Release Build
+            runner: ubuntu-22.04-arm
+            files: |
+              docker/rockchip/rk.hcl
+              docker/axcl/rk-axcl.hcl
+          - target: rpi-axcl
+            name: RPi AXCL Release Build
+            runner: ubuntu-22.04-arm
+            files: |
+              docker/rpi/rpi.hcl
+              docker/axcl/rpi-axcl.hcl
     steps:
-      - uses: actions/checkout@v6
+      - name: Skip unselected target
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.target != 'all' && inputs.target != matrix.target }}
+        run: echo "跳过 ${{ matrix.target }}，当前选择为 ${{ inputs.target }}"
+
+      - name: Check out code
+        if: ${{ github.event_name == 'release' || inputs.target == 'all' || inputs.target == matrix.target }}
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - id: lowercaseRepo
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository }}
-      - name: Log in to the Container registry
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create tag variables
-        env:
-          TAG: ${{ github.ref_name }}
-          LOWERCASE_REPO: ${{ steps.lowercaseRepo.outputs.lowercase }}
-        run: |
-          BUILD_TYPE=$([[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "stable" || echo "beta")
-          echo "BUILD_TYPE=${BUILD_TYPE}" >> $GITHUB_ENV
-          echo "BASE=ghcr.io/${LOWERCASE_REPO}" >> $GITHUB_ENV
-          echo "BUILD_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
-          echo "CLEAN_VERSION=$(echo ${GITHUB_REF##*/} | tr '[:upper:]' '[:lower:]' | sed 's/^[v]//')" >> $GITHUB_ENV
-      - name: Tag and push the main image
-        run: |
-          VERSION_TAG=${BASE}:${CLEAN_VERSION}
-          STABLE_TAG=${BASE}:stable
-          PULL_TAG=${BASE}:${BUILD_TAG}
-          docker run --rm -v $HOME/.docker/config.json:/config.json quay.io/skopeo/stable:latest copy --authfile /config.json --multi-arch all docker://${PULL_TAG} docker://${VERSION_TAG}
-          for variant in standard-arm64 tensorrt tensorrt-jp6 rk rocm synaptics; do
-            docker run --rm -v $HOME/.docker/config.json:/config.json quay.io/skopeo/stable:latest copy --authfile /config.json --multi-arch all docker://${PULL_TAG}-${variant} docker://${VERSION_TAG}-${variant}
-          done
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
-          # stable tag
-          if [[ "${BUILD_TYPE}" == "stable" ]]; then
-            docker run --rm -v $HOME/.docker/config.json:/config.json quay.io/skopeo/stable:latest copy --authfile /config.json --multi-arch all docker://${PULL_TAG} docker://${STABLE_TAG}
-            for variant in standard-arm64 tensorrt tensorrt-jp6 rk rocm synaptics; do
-              docker run --rm -v $HOME/.docker/config.json:/config.json quay.io/skopeo/stable:latest copy --authfile /config.json --multi-arch all docker://${PULL_TAG}-${variant} docker://${STABLE_TAG}-${variant}
-            done
+      - name: Set up QEMU and Buildx
+        if: ${{ github.event_name == 'release' || inputs.target == 'all' || inputs.target == matrix.target }}
+        id: setup
+        uses: ./.github/actions/setup
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release metadata
+        if: ${{ github.event_name == 'release' || inputs.target == 'all' || inputs.target == matrix.target }}
+        id: metadata
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SETUP_IMAGE_NAME: ${{ steps.setup.outputs.image-name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [[ "${EVENT_NAME}" == "release" ]]; then
+            RAW_VERSION="${RELEASE_TAG}"
+          else
+            RAW_VERSION="${INPUT_VERSION}"
           fi
+
+          VERSION="$(echo "${RAW_VERSION}" | tr '[:upper:]' '[:lower:]')"
+          VERSION="${VERSION#v}"
+          VERSION="${VERSION%-axera}"
+
+          if [[ ! "${VERSION}" =~ ^[a-z0-9][a-z0-9_.-]{0,127}$ ]]; then
+            echo "版本号不合法: ${RAW_VERSION} -> ${VERSION}"
+            exit 1
+          fi
+
+          BASE_IMAGE="${SETUP_IMAGE_NAME%:*}"
+          REGISTRY_IMAGE="${BASE_IMAGE}:${VERSION}-${TARGET}"
+          LOCAL_IMAGE="frigate:${VERSION}-${TARGET}"
+          TAR_PATH="/var/lib/docker/frigate-artifacts/frigate-${VERSION}-${TARGET}.tar"
+
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "REGISTRY_IMAGE=${REGISTRY_IMAGE}" >> "$GITHUB_ENV"
+          echo "LOCAL_IMAGE=${LOCAL_IMAGE}" >> "$GITHUB_ENV"
+          echo "TAR_PATH=${TAR_PATH}" >> "$GITHUB_ENV"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "registry_image=${REGISTRY_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "local_image=${LOCAL_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tar_path=${TAR_PATH}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Axera release image
+        if: ${{ github.event_name == 'release' || inputs.target == 'all' || inputs.target == matrix.target }}
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          push: true
+          targets: ${{ matrix.target }}
+          files: ${{ matrix.files }}
+          set: |
+            ${{ matrix.target }}.tags=${{ steps.metadata.outputs.registry_image }}
+            *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-${{ matrix.target }}
+            *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-${{ matrix.target }},mode=max
+
+      - name: Save Docker image as versioned tar
+        if: ${{ github.event_name == 'release' || inputs.target == 'all' || inputs.target == matrix.target }}
+        run: |
+          sudo chmod 755 /var/lib/docker
+          sudo mkdir -p "$(dirname "${TAR_PATH}")"
+          sudo chown "${USER}:${USER}" "$(dirname "${TAR_PATH}")"
+          docker pull "${REGISTRY_IMAGE}"
+          docker tag "${REGISTRY_IMAGE}" "${LOCAL_IMAGE}"
+          docker save -o "${TAR_PATH}" "${REGISTRY_IMAGE}" "${LOCAL_IMAGE}"
+          ls -lh "${TAR_PATH}"
+
+      - name: Upload Docker image tar
+        if: ${{ github.event_name == 'release' || inputs.target == 'all' || inputs.target == matrix.target }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: frigate-${{ steps.metadata.outputs.version }}-${{ matrix.target }}-docker-image
+          path: ${{ steps.metadata.outputs.tar_path }}
+          retention-days: 30
+          compression-level: 0

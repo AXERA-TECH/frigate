@@ -4,223 +4,95 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - dev
-      - master
+      - axera-dev
     paths-ignore:
       - "docs/**"
 
-# only run the latest commit to avoid cache overwrites
+permissions:
+  contents: read
+  packages: write
+
 concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: 3.11
+  DOCKER_BUILD_SUMMARY: "false"
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
 
 jobs:
-  amd64_build:
-    runs-on: ubuntu-22.04
-    name: AMD64 Build
+  axera_builds:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ax650
+            name: AX650 Build
+            runner: ubuntu-22.04-arm
+            files: docker/axera/ax650.hcl
+          - target: x86-axcl
+            name: x86 AXCL Build
+            runner: ubuntu-22.04
+            files: docker/axcl/x86-axcl.hcl
+          - target: rk-axcl
+            name: Rockchip AXCL Build
+            runner: ubuntu-22.04-arm
+            files: |
+              docker/rockchip/rk.hcl
+              docker/axcl/rk-axcl.hcl
+          - target: rpi-axcl
+            name: RPi AXCL Build
+            runner: ubuntu-22.04-arm
+            files: |
+              docker/rpi/rpi.hcl
+              docker/axcl/rpi-axcl.hcl
     steps:
       - name: Check out code
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
       - name: Set up QEMU and Buildx
         id: setup
         uses: ./.github/actions/setup
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push amd64 standard build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/main/Dockerfile
-          push: true
-          platforms: linux/amd64
-          target: frigate
-          tags: ${{ steps.setup.outputs.image-name }}-amd64
-          cache-from: type=registry,ref=${{ steps.setup.outputs.cache-name }}-amd64
-          cache-to: type=registry,ref=${{ steps.setup.outputs.cache-name }}-amd64,mode=max
-  arm64_build:
-    runs-on: ubuntu-22.04-arm
-    name: ARM Build
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Set up QEMU and Buildx
-        id: setup
-        uses: ./.github/actions/setup
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push arm64 standard build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/main/Dockerfile
-          push: true
-          platforms: linux/arm64
-          target: frigate
-          tags: |
-            ${{ steps.setup.outputs.image-name }}-standard-arm64
-          cache-from: type=registry,ref=${{ steps.setup.outputs.cache-name }}-arm64
-      - name: Build and push RPi build
+
+      - name: Create image metadata
+        id: metadata
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "IMAGE_NAME=${{ steps.setup.outputs.image-name }}-${{ matrix.target }}" >> "$GITHUB_ENV"
+          echo "TAR_PATH=/var/lib/docker/frigate-artifacts/frigate-${{ matrix.target }}-${GITHUB_SHA::7}.tar" >> "$GITHUB_ENV"
+          echo "image_name=${{ steps.setup.outputs.image-name }}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Axera image
         uses: docker/bake-action@v7
         with:
           source: .
           push: true
-          targets: rpi
-          files: docker/rpi/rpi.hcl
+          targets: ${{ matrix.target }}
+          files: ${{ matrix.files }}
           set: |
-            rpi.tags=${{ steps.setup.outputs.image-name }}-rpi
-            *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-arm64
-            *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-arm64,mode=max
-  jetson_jp6_build:
-    runs-on: ubuntu-22.04-arm
-    name: Jetson Jetpack 6
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
+            ${{ matrix.target }}.tags=${{ steps.metadata.outputs.image_name }}
+            *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-${{ matrix.target }}
+            *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-${{ matrix.target }},mode=max
+
+      - name: Save Docker image as tar
+        run: |
+          sudo chmod 755 /var/lib/docker
+          sudo mkdir -p "$(dirname "${TAR_PATH}")"
+          sudo chown "${USER}:${USER}" "$(dirname "${TAR_PATH}")"
+          docker pull "${IMAGE_NAME}"
+          docker save "${IMAGE_NAME}" -o "${TAR_PATH}"
+          ls -lh "${TAR_PATH}"
+
+      - name: Upload Docker image tar
+        uses: actions/upload-artifact@v7
         with:
-          persist-credentials: false
-      - name: Set up QEMU and Buildx
-        id: setup
-        uses: ./.github/actions/setup
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push TensorRT (Jetson, Jetpack 6)
-        env:
-          ARCH: arm64
-          BASE_IMAGE: nvcr.io/nvidia/tensorrt:23.12-py3-igpu
-          SLIM_BASE: nvcr.io/nvidia/tensorrt:23.12-py3-igpu
-          TRT_BASE: nvcr.io/nvidia/tensorrt:23.12-py3-igpu
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          push: true
-          targets: tensorrt
-          files: docker/tensorrt/trt.hcl
-          set: |
-            tensorrt.tags=${{ steps.setup.outputs.image-name }}-tensorrt-jp6
-            *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-jp6
-            *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-jp6,mode=max
-  amd64_extra_builds:
-    runs-on: ubuntu-22.04
-    name: AMD64 Extra Build
-    needs:
-      - amd64_build
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Set up QEMU and Buildx
-        id: setup
-        uses: ./.github/actions/setup
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push TensorRT (x86 GPU)
-        env:
-          COMPUTE_LEVEL: "50 60 70 80 90"
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          push: true
-          targets: tensorrt
-          files: docker/tensorrt/trt.hcl
-          set: |
-            tensorrt.tags=${{ steps.setup.outputs.image-name }}-tensorrt
-            *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-tensorrt
-            *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-tensorrt,mode=max
-      - name: AMD/ROCm general build
-        env:
-          HSA_OVERRIDE: 0
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          push: true
-          targets: rocm
-          files: docker/rocm/rocm.hcl
-          set: |
-            rocm.tags=${{ steps.setup.outputs.image-name }}-rocm
-            *.cache-to=type=registry,ref=${{ steps.setup.outputs.cache-name }}-rocm,mode=max
-            *.cache-from=type=registry,ref=${{ steps.setup.outputs.cache-name }}-rocm
-  arm64_extra_builds:
-    runs-on: ubuntu-22.04-arm
-    name: ARM Extra Build
-    needs:
-      - arm64_build
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Set up QEMU and Buildx
-        id: setup
-        uses: ./.github/actions/setup
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Rockchip build
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          push: true
-          targets: rk
-          files: docker/rockchip/rk.hcl
-          set: |
-            rk.tags=${{ steps.setup.outputs.image-name }}-rk
-            *.cache-from=type=gha
-  synaptics_build:
-    runs-on: ubuntu-22.04-arm
-    name: Synaptics Build
-    needs:
-      - arm64_build
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Set up QEMU and Buildx
-        id: setup
-        uses: ./.github/actions/setup
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Synaptics build
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          push: true
-          targets: synaptics
-          files: docker/synaptics/synaptics.hcl
-          set: |
-            synaptics.tags=${{ steps.setup.outputs.image-name }}-synaptics
-            *.cache-from=type=gha
-  # The majority of users running arm64 are rpi users, so the rpi
-  # build should be the primary arm64 image
-  assemble_default_build:
-    runs-on: ubuntu-22.04
-    name: Assemble and push default build
-    needs:
-      - amd64_build
-      - arm64_build
-    steps:
-      - id: lowercaseRepo
-        uses: ASzc/change-string-case-action@v6
-        with:
-          string: ${{ github.repository }}
-      - name: Log in to the Container registry
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create short sha
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
-      - uses: int128/docker-manifest-create-action@v2
-        with:
-          tags: ghcr.io/${{ steps.lowercaseRepo.outputs.lowercase }}:${{ env.SHORT_SHA }}
-          sources: |
-            ghcr.io/${{ steps.lowercaseRepo.outputs.lowercase }}:${{ env.SHORT_SHA }}-amd64
-            ghcr.io/${{ steps.lowercaseRepo.outputs.lowercase }}:${{ env.SHORT_SHA }}-rpi
+          name: frigate-${{ matrix.target }}-docker-image
+          path: /var/lib/docker/frigate-artifacts/frigate-${{ matrix.target }}-*.tar
+          retention-days: 7
+          compression-level: 0
