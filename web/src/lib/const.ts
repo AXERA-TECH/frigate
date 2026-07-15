@@ -1,5 +1,5 @@
-/** ONNX embedding models that require local model downloads. GenAI providers are not in this list. */
-export const JINA_EMBEDDING_MODELS = ["jinav1", "jinav2"] as const;
+/** 本地语义搜索模型；GenAI provider 不在这个列表里。 */
+export const JINA_EMBEDDING_MODELS = ["jinav1", "jinav2", "ax_jinav2"] as const;
 
 /**
  * Sentinel the backend substitutes for saved credentials (api keys,

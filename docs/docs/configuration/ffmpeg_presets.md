@@ -26,6 +26,10 @@ See [the hwaccel docs](/configuration/hardware_acceleration_video.md) for more i
 | preset-jetson-h264    | Nvidia Jetson with h264 stream |                                                       |
 | preset-jetson-h265    | Nvidia Jetson with h265 stream |                                                       |
 | preset-rkmpp          | Rockchip MPP                   | Use image with \*-rk suffix and privileged mode       |
+| preset-axera-h264     | AX650 H.264 码流               | 使用带 \*-ax650 后缀的镜像                            |
+| preset-axera-h265     | AX650 H.265 码流               | 使用带 \*-ax650 后缀的镜像                            |
+| preset-axera-h264-compat | AX650 H.264 兼容模式        | 使用 AXERA hwdownload 缩放路径                        |
+| preset-axera-h265-compat | AX650 H.265 兼容模式        | 使用 AXERA hwdownload 缩放路径                        |
 
 Select the appropriate hwaccel preset for your hardware.
 

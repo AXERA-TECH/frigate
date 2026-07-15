@@ -441,6 +441,15 @@ Next, you should configure [hardware object detection](/configuration/object_det
 
 AXERA accelerators are available in an M.2 form factor, compatible with both Raspberry Pi and Orange Pi. This form factor has also been successfully tested on x86 platforms, making it a versatile choice for various computing environments.
 
+AX650 SoC 平台应使用 `*-ax650` 镜像。AXCL 算力卡部署应根据 host 平台选择对应镜像：
+
+| 平台 | 镜像后缀 |
+| -------- | ------------ |
+| AX650 SoC | `-ax650` |
+| x86 host + AXCL 算力卡 | `-x86-axcl` |
+| Rockchip host + AXCL 算力卡 | `-rk-axcl` |
+| Raspberry Pi host + AXCL 算力卡 | `-rpi-axcl` |
+
 #### Installation
 
 Using AXERA accelerators requires the installation of the AXCL driver. We provide a convenient Linux script to complete this installation.
@@ -453,7 +462,9 @@ Follow these steps for installation:
 
 #### Setup
 
-To set up Frigate, follow the default installation instructions, for example: `ghcr.io/blakeblackshear/frigate:stable`
+在 AXCL host 上部署 Frigate 时，请按照默认安装流程配置，并选择匹配的 AXCL 镜像，例如：`ghcr.io/blakeblackshear/frigate:stable-x86-axcl`。
+
+在 AX650 SoC 上部署时，请使用 AX650 镜像，例如：`ghcr.io/blakeblackshear/frigate:stable-ax650`。
 
 Next, grant Docker permissions to access your hardware by adding the following lines to your `docker-compose.yml` file:
 

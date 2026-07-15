@@ -17,6 +17,13 @@ from unidecode import unidecode
 logger = logging.getLogger(__name__)
 
 
+def yuv_to_bgr(frame: np.ndarray, pixel_format: str = "yuv420p") -> np.ndarray:
+    if pixel_format == "nv12":
+        return cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_NV12)
+
+    return cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+
+
 def transliterate_to_latin(text: str) -> str:
     """
     Transliterate a given text to Latin.

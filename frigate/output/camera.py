@@ -25,6 +25,7 @@ class FFMpegConverter(threading.Thread):
         out_width: int,
         out_height: int,
         quality: int,
+        input_pixel_format: str,
     ):
         super().__init__(name=f"{camera}_output_converter")
         self.camera = camera
@@ -38,7 +39,7 @@ class FFMpegConverter(threading.Thread):
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "yuv420p",
+            input_pixel_format,
             "-video_size",
             f"{in_width}x{in_height}",
             "-i",
@@ -160,6 +161,7 @@ class JsmpegCamera:
             width,
             config.live.height,
             config.live.quality,
+            config.detect_pixel_format,
         )
         self.broadcaster = BroadcastThread(
             config.name or "",

@@ -58,6 +58,25 @@ Frigate manages reasoning per task automatically:
 
 You can use a pure instruct, hybrid, or thinking-capable model with Frigate — no extra configuration is required to disable thinking for descriptions.
 
+### Provider request concurrency
+
+`max_concurrency` 控制单个 GenAI provider 同时发出的请求数，默认值为 `1`。本地
+OpenAI-compatible 服务如果只支持单并发（例如 AXLLM `Max concurrency: 1`），应保
+持默认值；如果使用云端服务或确认后端支持更高并发，可以按需调大。
+
+```yaml
+genai:
+  default:
+    provider: openai
+    model: AXERA-TECH/Qwen3.5-2B
+    api_key: EMPTY
+    max_concurrency: 1
+    base_url: http://172.17.0.1:8000/v1
+    roles:
+      - descriptions
+      - chat
+```
+
 ### llama.cpp
 
 [llama.cpp](https://github.com/ggml-org/llama.cpp) is a C++ implementation of LLaMA that provides a high-performance inference server.

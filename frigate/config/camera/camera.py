@@ -237,6 +237,15 @@ class CameraConfig(FrigateBaseModel):
         return self.detect.height * 3 // 2, self.detect.width
 
     @property
+    def detect_pixel_format(self) -> str:
+        detect_args = get_ffmpeg_arg_list(self.ffmpeg.output_args.detect)
+
+        try:
+            return detect_args[detect_args.index("-pix_fmt") + 1]
+        except (ValueError, IndexError):
+            return "yuv420p"
+
+    @property
     def ffmpeg_cmds(self) -> list[dict[str, list[str]]]:
         return self._ffmpeg_cmds
 

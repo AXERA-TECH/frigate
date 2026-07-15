@@ -2,6 +2,7 @@
 
 import logging
 import os
+import shlex
 from enum import Enum
 from typing import Any, Optional
 
@@ -82,6 +83,10 @@ _user_agent_args = [
 # Presets for FFMPEG Stream Decoding (detect role)
 
 PRESETS_HW_ACCEL_DECODE = {
+    "preset-axera-h264": "-resize {1}x{2} -c:v h264_axdec",
+    "preset-axera-h265": "-resize {1}x{2} -c:v hevc_axdec",
+    "preset-axera-h264-compat": "-hwaccel axmm -hwaccel_output_format axmm -c:v h264_axdec",
+    "preset-axera-h265-compat": "-hwaccel axmm -hwaccel_output_format axmm -c:v hevc_axdec",
     "preset-rpi-64-h264": "-c:v:1 h264_v4l2m2m",
     "preset-rpi-64-h265": "-c:v:1 hevc_v4l2m2m",
     FFMPEG_HWACCEL_VAAPI: "-hwaccel_flags allow_profile_mismatch -hwaccel vaapi -hwaccel_device {3} -hwaccel_output_format vaapi",
@@ -118,6 +123,10 @@ PRESETS_HW_ACCEL_DECODE["preset-rk-h265"] = PRESETS_HW_ACCEL_DECODE[
 # Presets for FFMPEG Stream Scaling (detect role)
 
 PRESETS_HW_ACCEL_SCALE = {
+    "preset-axera-h264": "-r {0}",
+    "preset-axera-h265": "-r {0}",
+    "preset-axera-h264-compat": "-r {0} -vf ax_scale={1}:{2},hwdownload,format=nv12",
+    "preset-axera-h265-compat": "-r {0} -vf ax_scale={1}:{2},hwdownload,format=nv12",
     "preset-rpi-64-h264": "-r {0} -vf fps={0},scale={1}:{2}",
     "preset-rpi-64-h265": "-r {0} -vf fps={0},scale={1}:{2}",
     FFMPEG_HWACCEL_VAAPI: "-r {0} -vf fps={0},scale_vaapi=w={1}:h={2},hwdownload,format=nv12",
@@ -205,6 +214,10 @@ PRESETS_HW_ACCEL_ENCODE_TIMELAPSE["preset-rk-h264"] = PRESETS_HW_ACCEL_ENCODE_TI
 
 # encoding of previews is only done on CPU due to comparable encode times and better quality from libx264
 PRESETS_HW_ACCEL_ENCODE_PREVIEW = {
+    "preset-axera-h264": "{0} -init_hw_device axmm:axmm,alloc_blk=1 -hide_banner {1} -c:v h264_axenc -profile:v baseline {2}",
+    "preset-axera-h265": "{0} -init_hw_device axmm:axmm,alloc_blk=1 -hide_banner {1} -c:v h264_axenc -profile:v baseline {2}",
+    "preset-axera-h264-compat": "{0} -init_hw_device axmm:axmm,alloc_blk=1 -hide_banner {1} -c:v h264_axenc -profile:v baseline {2}",
+    "preset-axera-h265-compat": "{0} -init_hw_device axmm:axmm,alloc_blk=1 -hide_banner {1} -c:v h264_axenc -profile:v baseline {2}",
     "default": "{0} -hide_banner {1} -c:v libx264 -profile:v baseline -preset:v ultrafast {2}",
 }
 
@@ -251,6 +264,44 @@ class EncodeTypeEnum(str, Enum):
     birdseye = "birdseye"
     preview = "preview"
     timelapse = "timelapse"
+
+
+def get_preview_encode_preset(hwaccel_args: Any) -> str:
+    if isinstance(hwaccel_args, str) and hwaccel_args.startswith("preset-axera-"):
+        return hwaccel_args
+
+    return "default"
+
+
+def get_preview_mp4_command(
+    ffmpeg_path: str,
+    hwaccel_args: Any,
+    input_args: list[str],
+    output_args: list[str],
+) -> list[str]:
+    encode_preset = get_preview_encode_preset(hwaccel_args)
+
+    if encode_preset == "default":
+        return [
+            ffmpeg_path,
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            *input_args,
+            "-c:v",
+            "libx264",
+            *output_args,
+        ]
+
+    return shlex.split(
+        parse_preset_hardware_acceleration_encode(
+            ffmpeg_path,
+            encode_preset,
+            shlex.join(["-loglevel", "warning", *input_args]),
+            shlex.join(output_args),
+            EncodeTypeEnum.preview,
+        )
+    )
 
 
 def parse_preset_hardware_acceleration_encode(

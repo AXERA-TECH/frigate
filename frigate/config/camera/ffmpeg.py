@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 from typing import Union
 
@@ -16,19 +17,29 @@ __all__ = [
     "FfmpegOutputArgsConfig",
 ]
 
-# Note: Setting threads to less than 2 caused several issues with recording segments
-# https://github.com/blakeblackshear/frigate/issues/5659
-FFMPEG_GLOBAL_ARGS_DEFAULT = ["-hide_banner", "-loglevel", "warning", "-threads", "2"]
+AXERA_TARGET = os.environ.get("FRIGATE_AXERA_TARGET", "")
+AXERA_AX650_DEFAULTS = AXERA_TARGET == "ax650"
+DEFAULT_FFMPEG_THREADS = "1" if AXERA_AX650_DEFAULTS else "2"
+DEFAULT_DETECT_PIXEL_FORMAT = "nv12" if AXERA_AX650_DEFAULTS else "yuv420p"
+
+# 默认保持上游线程数；AX650 镜像通过环境变量启用专属默认值。
+FFMPEG_GLOBAL_ARGS_DEFAULT = [
+    "-hide_banner",
+    "-loglevel",
+    "warning",
+    "-threads",
+    DEFAULT_FFMPEG_THREADS,
+]
 FFMPEG_INPUT_ARGS_DEFAULT = "preset-rtsp-generic"
 
 RECORD_FFMPEG_OUTPUT_ARGS_DEFAULT = "preset-record-generic-audio-aac"
 DETECT_FFMPEG_OUTPUT_ARGS_DEFAULT = [
     "-threads",
-    "2",
+    DEFAULT_FFMPEG_THREADS,
     "-f",
     "rawvideo",
     "-pix_fmt",
-    "yuv420p",
+    DEFAULT_DETECT_PIXEL_FORMAT,
 ]
 
 

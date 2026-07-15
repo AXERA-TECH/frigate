@@ -131,6 +131,26 @@ Switching between V1 and V2 requires reindexing your embeddings. The embeddings 
 
 :::
 
+### Axera AX650 Jina AI CLIP V2
+
+AX650 SoC 镜像支持使用 `ax_jinav2` 调用已转换为 AXEngine 的 Jina V2
+语义搜索模型。该模型运行在 AX650 NPU 上，模型缓存目录为
+`/config/model_cache/AXERA-TECH/jina-clip-v2`。
+
+```yaml
+semantic_search:
+  enabled: True
+  model: "ax_jinav2"
+  model_size: large
+```
+
+:::note
+
+`ax_jinav2` 与 `jinav1`、`jinav2` 的 embeddings 不兼容，切换模型后需要重新
+reindex。
+
+:::
+
 ### GenAI Provider
 
 Frigate can use a GenAI provider for semantic search embeddings when that provider has the `embeddings` role. Currently, only **llama.cpp** supports multimodal embeddings (both text and images).

@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { JINA_EMBEDDING_MODELS } from "@/lib/const";
 import { LiveFormDataContext } from "../../LiveFormDataContext";
 import { getSizedFieldClassName } from "../utils";
 import { SelectWidget } from "./SelectWidget";
@@ -21,8 +22,7 @@ export function SemanticSearchModelSizeWidget(props: WidgetProps) {
   const isProvider =
     typeof model === "string" &&
     model !== "" &&
-    model !== "jinav1" &&
-    model !== "jinav2";
+    !(JINA_EMBEDDING_MODELS as readonly string[]).includes(model);
 
   // Clear model_size while on a provider (buildOverrides converts to ""
   // which the backend treats as "remove"). Restore the schema default

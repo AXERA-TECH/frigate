@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from ruamel.yaml.constructor import DuplicateKeyError
 
 from frigate.config import BirdseyeModeEnum, FrigateConfig
+from frigate.config.classification import SemanticSearchModelEnum
 from frigate.const import MODEL_CACHE_DIR
 from frigate.detectors import DetectorTypeEnum
 from frigate.util.builtin import deep_merge
@@ -67,6 +68,52 @@ class TestConfig(unittest.TestCase):
         assert "cpu" in frigate_config.detectors.keys()
         assert frigate_config.detectors["cpu"].type == DetectorTypeEnum.cpu
         assert frigate_config.detectors["cpu"].model.width == 320
+
+    def test_ax_jinav2_semantic_search_model(self):
+        config = deep_merge(
+            {
+                "semantic_search": {
+                    "enabled": True,
+                    "model": "ax_jinav2",
+                    "model_size": "large",
+                }
+            },
+            self.minimal,
+        )
+
+        frigate_config = FrigateConfig(**config)
+
+        assert (
+            frigate_config.semantic_search.model
+            == SemanticSearchModelEnum.ax_jinav2
+        )
+
+    def test_genai_max_concurrency_config(self):
+        config = deep_merge(
+            {
+                "genai": {
+                    "default": {
+                        "provider": "openai",
+                        "model": "AXERA-TECH/Qwen3.5-2B",
+                        "api_key": "EMPTY",
+                        "roles": ["descriptions", "embeddings"],
+                    },
+                    "local": {
+                        "provider": "openai",
+                        "model": "AXERA-TECH/Qwen3.5-2B",
+                        "api_key": "EMPTY",
+                        "max_concurrency": 2,
+                        "roles": ["chat"],
+                    },
+                }
+            },
+            self.minimal,
+        )
+
+        frigate_config = FrigateConfig(**config)
+
+        assert frigate_config.genai["default"].max_concurrency == 1
+        assert frigate_config.genai["local"].max_concurrency == 2
 
     @patch("frigate.detectors.detector_config.load_labels")
     def test_detector_custom_model_path(self, mock_labels):

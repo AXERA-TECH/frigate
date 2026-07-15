@@ -19,10 +19,16 @@ from frigate.const import CACHE_DIR, CLIPS_DIR, INSERT_PREVIEW, PREVIEW_FRAME_TY
 from frigate.ffmpeg_presets import (
     FPS_VFR_PARAM,
     EncodeTypeEnum,
+    get_preview_encode_preset,
     parse_preset_hardware_acceleration_encode,
 )
 from frigate.models import Previews
-from frigate.util.image import copy_yuv_to_position, get_blank_yuv_frame, get_yuv_crop
+from frigate.util.image import (
+    copy_yuv_to_position,
+    get_blank_yuv_frame,
+    get_yuv_crop,
+    yuv_to_bgr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +139,7 @@ class FFMpegConverter(threading.Thread):
         # write a PREVIEW at fps and 1 key frame per clip
         self.ffmpeg_cmd = parse_preset_hardware_acceleration_encode(
             config.ffmpeg.ffmpeg_path,
-            "default",
+            get_preview_encode_preset(config.ffmpeg.hwaccel_args),
             input="-f concat -y -protocol_whitelist pipe,file -safe 0 -threads 1 -i /dev/stdin",
             output=f"-threads 1 -g {PREVIEW_KEYFRAME_INTERVAL} -bf 0 -b:v {PREVIEW_QUALITY_BIT_RATES[self.config.record.preview.quality]}{PREVIEW_QMAX_PARAM[self.config.record.preview.quality]} {FPS_VFR_PARAM} -movflags +faststart -pix_fmt yuv420p {self.path}",
             type=EncodeTypeEnum.preview,
@@ -345,22 +351,28 @@ class PreviewRecorder:
         return False
 
     def write_frame_to_cache(self, frame_time: float, frame: np.ndarray) -> None:
-        # resize yuv frame
-        small_frame: np.ndarray = np.zeros(
-            (self.out_height * 3 // 2, self.out_width), np.uint8
-        )
-        copy_yuv_to_position(
-            small_frame,
-            (0, 0),
-            (self.out_height, self.out_width),
-            frame,
-            self.channel_dims,
-            cv2.INTER_AREA,
-        )
-        small_frame = cv2.cvtColor(
-            small_frame,
-            cv2.COLOR_YUV2BGR_I420,
-        )
+        if self.config.detect_pixel_format == "nv12":
+            small_frame = yuv_to_bgr(frame, self.config.detect_pixel_format)
+            small_frame = cv2.resize(
+                small_frame,
+                dsize=(self.out_width, self.out_height),
+                interpolation=cv2.INTER_AREA,
+            )
+        else:
+            # resize yuv frame
+            small_frame: np.ndarray = np.zeros(
+                (self.out_height * 3 // 2, self.out_width), np.uint8
+            )
+            copy_yuv_to_position(
+                small_frame,
+                (0, 0),
+                (self.out_height, self.out_width),
+                frame,
+                self.channel_dims,
+                cv2.INTER_AREA,
+            )
+            small_frame = yuv_to_bgr(small_frame, self.config.detect_pixel_format)
+
         cache_path = get_cache_image_name(self.camera_name, frame_time)
 
         if not cv2.imwrite(

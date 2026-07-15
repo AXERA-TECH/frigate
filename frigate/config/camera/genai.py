@@ -54,6 +54,12 @@ class GenAIConfig(FrigateBaseModel):
         title="Roles",
         description="GenAI roles (chat, descriptions, embeddings); one provider per role.",
     )
+    max_concurrency: int = Field(
+        default=1,
+        title="最大并发数",
+        description="该 GenAI provider 允许同时执行的最大请求数。AXLLM 只支持单并发时保持默认值 1。",
+        ge=1,
+    )
     provider_options: dict[str, Any] = Field(
         default={},
         title="Provider options",

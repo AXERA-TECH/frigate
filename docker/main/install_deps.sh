@@ -38,6 +38,8 @@ rm /tmp/libedgetpu1-max.deb
 if [[ "${TARGETARCH}" == "arm64" ]]; then
     if [[ "${BASE_IMAGE}" == *"nvcr.io/nvidia/tensorrt"* ]]; then
         echo "Info: Skipping apt-get commands because BASE_IMAGE includes 'nvcr.io/nvidia/tensorrt' for arm64."
+    elif [[ "${BASE_IMAGE}" == ubuntu:* ]]; then
+        echo "跳过 Debian bookworm-backports 包：当前 arm64 底座为 Ubuntu。"
     else
         echo "deb http://deb.debian.org/debian bookworm-backports main" | tee /etc/apt/sources.list.d/bookworm-backbacks.list
         apt-get -qq update

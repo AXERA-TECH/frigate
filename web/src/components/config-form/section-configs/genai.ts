@@ -3,7 +3,12 @@ import type { SectionConfigOverrides } from "./types";
 const genai: SectionConfigOverrides = {
   base: {
     sectionDocs: "/configuration/genai/genai_config",
-    advancedFields: ["*.base_url", "*.provider_options", "*.runtime_options"],
+    advancedFields: [
+      "*.base_url",
+      "*.max_concurrency",
+      "*.provider_options",
+      "*.runtime_options",
+    ],
     hiddenFields: ["genai.enabled_in_config"],
     restartRequired: [],
     uiSchema: {
@@ -15,6 +20,7 @@ const genai: SectionConfigOverrides = {
           "api_key",
           "base_url",
           "model",
+          "max_concurrency",
           "provider_options",
           "runtime_options",
           "*",

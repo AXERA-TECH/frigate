@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1.6
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PIP_BREAK_SYSTEM_PACKAGES=1
+
+FROM deps AS ax650
+ARG TARGETARCH
+ARG PIP_BREAK_SYSTEM_PACKAGES
+
+WORKDIR /opt/frigate/
+COPY --from=rootfs / /
+
+RUN --mount=type=bind,source=docker/axera/install_ax_ffmpeg.sh,target=/deps/install_ax_ffmpeg.sh \
+    /deps/install_ax_ffmpeg.sh
+
+RUN echo "/soc/lib" > /etc/ld.so.conf.d/ax.conf
+
+ENV FRIGATE_AXERA_TARGET="ax650"
+ENV DEFAULT_FFMPEG_VERSION="ax"
+ENV INCLUDED_FFMPEG_VERSIONS="${DEFAULT_FFMPEG_VERSION}:${INCLUDED_FFMPEG_VERSIONS}"
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/soc/lib"
+
+ENTRYPOINT ["sh", "-c", "ldconfig && exec /init"]

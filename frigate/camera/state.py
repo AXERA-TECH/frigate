@@ -23,6 +23,7 @@ from frigate.util.image import (
     draw_timestamp,
     is_better_thumbnail,
     is_label_printable,
+    yuv_to_bgr,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,10 @@ class CameraState:
             motion_boxes = self.motion_boxes.copy()
             regions = self.regions.copy()
 
-        frame_copy = cv2.cvtColor(frame_copy, cv2.COLOR_YUV2BGR_I420)  # type: ignore[assignment]
+        frame_copy = yuv_to_bgr(  # type: ignore[assignment]
+            frame_copy,
+            self.camera_config.detect_pixel_format,
+        )
         # draw on the frame
         if draw_options.get("mask"):
             mask_overlay = np.where(self.camera_config.motion.rasterized_mask == [0])  # type: ignore[attr-defined]

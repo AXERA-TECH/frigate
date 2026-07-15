@@ -23,6 +23,7 @@ from frigate.util.image import (
     area,
     get_snapshot_bytes,
     is_better_thumbnail,
+    yuv_to_bgr,
 )
 from frigate.util.object import box_inside
 from frigate.util.velocity import calculate_real_world_speed
@@ -479,9 +480,9 @@ class TrackedObject:
 
         try:
             frame_time = self.thumbnail_data["frame_time"]
-            best_frame = cv2.cvtColor(
+            best_frame = yuv_to_bgr(
                 self.frame_cache[frame_time]["frame"],
-                cv2.COLOR_YUV2BGR_I420,
+                self.camera_config.detect_pixel_format,
             )
         except KeyError:
             logger.warning(

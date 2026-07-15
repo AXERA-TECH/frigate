@@ -42,6 +42,7 @@ from frigate.const import (
     MAX_SEGMENT_DURATION,
     PREVIEW_FRAME_TYPE,
 )
+from frigate.ffmpeg_presets import get_preview_mp4_command
 from frigate.models import Event, Previews, Recordings, Regions, ReviewSegment
 from frigate.output.preview import get_most_recent_preview_frame
 from frigate.track.object_processing import TrackedObjectProcessor
@@ -58,6 +59,20 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=[Tags.media])
+
+
+def _get_preview_mp4_command(
+    config: FrigateConfig,
+    camera_name: str,
+    input_args: list[str],
+    output_args: list[str],
+) -> list[str]:
+    camera_config = config.cameras.get(camera_name)
+    ffmpeg_path = (
+        camera_config.ffmpeg.ffmpeg_path if camera_config else config.ffmpeg.ffmpeg_path
+    )
+    hwaccel_args = camera_config.ffmpeg.hwaccel_args if camera_config else "default"
+    return get_preview_mp4_command(ffmpeg_path, hwaccel_args, input_args, output_args)
 
 
 def _resolve_cache_age(max_cache_age: int) -> int:
@@ -1522,28 +1537,28 @@ async def preview_mp4(
         minutes = int(diff / 60)
         seconds = int(diff % 60)
         config: FrigateConfig = request.app.frigate_config
-        ffmpeg_cmd = [
-            config.ffmpeg.ffmpeg_path,
-            "-hide_banner",
-            "-loglevel",
-            "warning",
-            "-y",
-            "-ss",
-            f"00:{minutes}:{seconds}",
-            "-t",
-            f"{end_ts - start_ts}",
-            "-i",
-            preview.path,
-            "-r",
-            "8",
-            "-vf",
-            "setpts=0.12*PTS",
-            "-c:v",
-            "libx264",
-            "-movflags",
-            "+faststart",
-            path,
-        ]
+        ffmpeg_cmd = _get_preview_mp4_command(
+            config,
+            camera_name,
+            [
+                "-y",
+                "-ss",
+                f"00:{minutes}:{seconds}",
+                "-t",
+                f"{end_ts - start_ts}",
+                "-i",
+                preview.path,
+                "-r",
+                "8",
+                "-vf",
+                "setpts=0.12*PTS",
+            ],
+            [
+                "-movflags",
+                "+faststart",
+                path,
+            ],
+        )
 
         process = await asyncio.to_thread(
             sp.run,
@@ -1601,26 +1616,26 @@ async def preview_mp4(
         selected_previews.append(last_file)
         config: FrigateConfig = request.app.frigate_config
 
-        ffmpeg_cmd = [
-            config.ffmpeg.ffmpeg_path,
-            "-hide_banner",
-            "-loglevel",
-            "warning",
-            "-f",
-            "concat",
-            "-y",
-            "-protocol_whitelist",
-            "pipe,file",
-            "-safe",
-            "0",
-            "-i",
-            "/dev/stdin",
-            "-c:v",
-            "libx264",
-            "-movflags",
-            "+faststart",
-            path,
-        ]
+        ffmpeg_cmd = _get_preview_mp4_command(
+            config,
+            camera_name,
+            [
+                "-f",
+                "concat",
+                "-y",
+                "-protocol_whitelist",
+                "pipe,file",
+                "-safe",
+                "0",
+                "-i",
+                "/dev/stdin",
+            ],
+            [
+                "-movflags",
+                "+faststart",
+                path,
+            ],
+        )
 
         process = await asyncio.to_thread(
             sp.run,

@@ -228,7 +228,8 @@ class OpenAIClient(GenAIClient):
                 }
                 request_params.update(provider_opts)
 
-            result = self.provider.chat.completions.create(**request_params)
+            with self._request_semaphore:
+                result = self.provider.chat.completions.create(**request_params)
 
             if (
                 result is None
@@ -359,57 +360,58 @@ class OpenAIClient(GenAIClient):
             finish_reason = "stop"
             usage_stats: Optional[dict[str, Any]] = None
 
-            stream = self.provider.chat.completions.create(**request_params)
+            with self._request_semaphore:
+                stream = self.provider.chat.completions.create(**request_params)
 
-            for chunk in stream:
-                chunk_usage = getattr(chunk, "usage", None)
-                if chunk_usage is not None:
-                    usage_stats = _stats_from_openai_usage(chunk_usage)
+                for chunk in stream:
+                    chunk_usage = getattr(chunk, "usage", None)
+                    if chunk_usage is not None:
+                        usage_stats = _stats_from_openai_usage(chunk_usage)
 
-                if not chunk or not chunk.choices:
-                    continue
+                    if not chunk or not chunk.choices:
+                        continue
 
-                choice = chunk.choices[0]
-                delta = choice.delta
+                    choice = chunk.choices[0]
+                    delta = choice.delta
 
-                # Check for finish reason
-                if choice.finish_reason:
-                    finish_reason = choice.finish_reason
+                    # Check for finish reason
+                    if choice.finish_reason:
+                        finish_reason = choice.finish_reason
 
-                # Extract reasoning deltas (reasoning_content or reasoning,
-                # depending on the server)
-                reasoning_delta = getattr(delta, "reasoning_content", None) or getattr(
-                    delta, "reasoning", None
-                )
-                if reasoning_delta:
-                    reasoning_parts.append(reasoning_delta)
-                    yield ("reasoning_delta", reasoning_delta)
+                    # Extract reasoning deltas (reasoning_content or reasoning,
+                    # depending on the server)
+                    reasoning_delta = getattr(
+                        delta, "reasoning_content", None
+                    ) or getattr(delta, "reasoning", None)
+                    if reasoning_delta:
+                        reasoning_parts.append(reasoning_delta)
+                        yield ("reasoning_delta", reasoning_delta)
 
-                # Extract content deltas
-                if delta.content:
-                    content_parts.append(delta.content)
-                    yield ("content_delta", delta.content)
+                    # Extract content deltas
+                    if delta.content:
+                        content_parts.append(delta.content)
+                        yield ("content_delta", delta.content)
 
-                # Extract tool calls
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index
-                        fn = tc.function
+                    # Extract tool calls
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index
+                            fn = tc.function
 
-                        if idx not in tool_calls_by_index:
-                            tool_calls_by_index[idx] = {
-                                "id": tc.id or "",
-                                "name": fn.name if fn and fn.name else "",
-                                "arguments": "",
-                            }
+                            if idx not in tool_calls_by_index:
+                                tool_calls_by_index[idx] = {
+                                    "id": tc.id or "",
+                                    "name": fn.name if fn and fn.name else "",
+                                    "arguments": "",
+                                }
 
-                        t = tool_calls_by_index[idx]
-                        if tc.id:
-                            t["id"] = tc.id
-                        if fn and fn.name:
-                            t["name"] = fn.name
-                        if fn and fn.arguments:
-                            t["arguments"] += fn.arguments
+                            t = tool_calls_by_index[idx]
+                            if tc.id:
+                                t["id"] = tc.id
+                            if fn and fn.name:
+                                t["name"] = fn.name
+                            if fn and fn.arguments:
+                                t["arguments"] += fn.arguments
 
             # Build final message
             full_content = "".join(content_parts).strip() or None

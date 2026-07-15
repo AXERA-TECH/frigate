@@ -761,6 +761,8 @@ genai:
       - chat
       - descriptions
       - embeddings
+    # 可选：该 provider 的最大并发请求数（默认值如下）
+    max_concurrency: 1
     # Optional additional args to pass to the GenAI Provider (default: None)
     provider_options:
       keep_alive: -1
